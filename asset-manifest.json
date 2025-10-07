@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/bitzone-shop1/static/css/main.6af53e1d.css",
+    "main.js": "/bitzone-shop1/static/js/main.c31673b3.js",
+    "index.html": "/bitzone-shop1/index.html",
+    "main.6af53e1d.css.map": "/bitzone-shop1/static/css/main.6af53e1d.css.map",
+    "main.c31673b3.js.map": "/bitzone-shop1/static/js/main.c31673b3.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.6af53e1d.css",
+    "static/js/main.c31673b3.js"
+  ]
+}
