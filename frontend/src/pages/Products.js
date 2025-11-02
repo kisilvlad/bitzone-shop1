@@ -1,574 +1,654 @@
-// src/pages/Products.js
-
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+// frontend/src/pages/Products.js
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import ProductCard from '../components/ProductCard';
-import { testProducts } from '../utils/testData';
+import { motion, AnimatePresence } from 'framer-motion';
+import styled from 'styled-components';
+
+/* ======================== Styled (ОНОВЛЕНО) ======================== */
+const Page = styled.section`
+  &.container { overflow-x: hidden; }
+`;
+const HeaderBar = styled.div`
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+`;
+const Tabs = styled.div`
+  display: flex;
+  flex-wrap: wrap; gap: 8px; justify-content: center;
+  .tab-btn {
+    padding: 8px 12px; border-radius: 12px; font-weight: 800; letter-spacing: .2px;
+    border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    [data-theme="light"] & {
+      background: var(--surface-input);
+    }
+    color: var(--text-primary); /* <-- ЗМІНЕНО */
+    text-decoration: none;
+    transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .tab-btn:hover { 
+    transform: translateY(-1px); 
+    border-color: var(--accent-turquoise);
+  }
+  .tab-btn.active {
+    border-color: var(--accent-turquoise);
+    box-shadow: 0 10px 26px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(255,255,255,.08);
+    [data-theme="light"] & {
+       box-shadow: 0 10px 26px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(0,0,0,.04);
+    }
+    color: var(--accent-turquoise);
+  }
+`;
+const Layout = styled.div`
+  display: grid; gap: 18px;
+  grid-template-columns: 280px 1fr;
+  @media (max-width: 992px) { grid-template-columns: 1fr; }
+`;
+const Sidebar = styled.aside`
+  display: none;
+  @media (min-width: 993px) { display: block; }
+  position: sticky;
+  top: 84px;
+  align-self: start;
+  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  border-radius: 16px;
+  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  box-shadow: var(--shadow-card); /* <-- ЗМІНЕНО */
+  padding: 14px;
+`;
+const TopControls = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center; gap: 10px;
+  margin: 22px 0 16px; flex-wrap: wrap;
+`;
+const FilterBtn = styled.button`
+  padding: 10px 14px; border-radius: 999px;
+  font-weight: 900;
+  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,.08);
+  [data-theme="light"] & {
+     box-shadow: var(--shadow-card), inset 0 1px 0 rgba(0,0,0,.04);
+  }
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: transform .12s ease, box-shadow .15s ease;
+  &:hover { transform: translateY(-1px); }
+  @media (min-width: 993px) { display: none; }
+`;
+const SortRow = styled.div`
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+  width: 100%;
+  @media (min-width: 541px) { width: auto; }
+`;
+const SortBtn = styled.button`
+  padding: 7px 10px; border-radius: 10px; font-weight: 800;
+  letter-spacing: .2px;
+  border: 1px solid ${({active})=>active?'var(--accent-turquoise)':'var(--border-input)'}; /* <-- ЗМІНЕНО */
+  background: ${({active})=>active
+    ? 'linear-gradient(180deg, rgba(0,245,255,.12), rgba(0,245,255,.06))' 
+    : 'var(--surface-input)'}; /* <-- ЗМІНЕНО */
+  color: ${({active})=>active?'var(--accent-turquoise)':'var(--text-primary)'}; /* <-- ЗМІНЕНО */
+  transition: transform .12s ease, box-shadow .15s ease;
+  &:hover { transform: translateY(-1px); }
+`;
+const GButton = styled.button`
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease, opacity .2s ease;
+  cursor: ${({disabled})=>disabled?'not-allowed':'pointer'};
+  width: ${({full}) => full ? '100%' : 'auto'};
+  &:hover { transform: ${({disabled})=>disabled?'none':'translateY(-1px)'}; }
+  &:active { transform: ${({disabled})=>disabled?'none':'translateY(0) scale(.98)'}; }
+
+  ${({variant}) => {
+    switch (variant) {
+      case 'primary':
+        return `
+          color: var(--text-primary);
+          border: 1px solid var(--accent-turquoise); /* <-- ЗМІНЕНО */
+          background: linear-gradient(180deg, rgba(0,245,255,.12), rgba(255,215,0,.10));
+          [data-theme="light"] & {
+             background: linear-gradient(180deg, rgba(0,245,255,.12), rgba(255,215,0,.10));
+          }
+          box-shadow: 0 12px 30px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(255,255,255,.08);
+        `;
+      case 'danger':
+        return `
+          color: var(--text-primary);
+          border: 1px solid var(--accent-pink); /* <-- ЗМІНЕНО */
+          background: linear-gradient(180deg, rgba(255,0,127,.12), rgba(255,0,127,.08));
+          box-shadow: 0 12px 30px var(--shadow-btn-pink), inset 0 1px 0 rgba(255,255,255,.06);
+        `;
+      default: // 'outline'
+        return `
+          color: var(--text-primary);
+          border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+          background: var(--surface-input); /* <-- ЗМІНЕНО */
+          box-shadow: 0 10px 24px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.06);
+          [data-theme="light"] & {
+             box-shadow: 0 10px 24px rgba(0,0,0,.05), inset 0 1px 0 rgba(0,0,0,.02);
+          }
+        `;
+    }
+  }}
+`;
+const SheetOverlay = styled(motion.div)`
+  position: fixed; inset: 0;
+  z-index: 70;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px);
+  [data-theme="light"] & {
+    background: rgba(0,0,0,.25);
+  }
+`;
+const SheetPanel = styled(motion.aside)`
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 71;
+  border-bottom-left-radius: 18px; border-bottom-right-radius: 18px;
+  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  border-bottom: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  box-shadow: var(--shadow-card-hover); /* <-- ЗМІНЕНО */
+  max-height: 86vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  @media (min-width: 993px) { display: none; }
+`;
+const SheetHeader = styled.div`
+  display: flex;
+  align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+`;
+const SheetBody = styled.div`
+  padding: 14px 16px;
+  overflow: auto; flex: 1;
+  display: grid; gap: 14px;
+`;
+const SheetFooter = styled.div`
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  display: flex;
+  gap: 10px; justify-content: space-between; align-items: center;
+`;
+const Group = styled.div``;
+const GroupTitle = styled.div`
+  font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--accent-turquoise);
+  margin-bottom: 8px;
+`;
+const Box = styled.div`
+  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  border-radius: 12px; padding: 10px;
+  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+`;
+const SearchInput = styled.input`
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  outline: none;
+`;
+const Row = styled.div` display:flex; gap:10px; align-items:center; `;
+const NumberInput = styled.input`
+  width: 100%; padding: 8px 10px; border-radius: 10px;
+  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  outline: none;
+`;
+const Check = styled.label`
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; cursor: pointer;
+  user-select: none;
+  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  padding: 7px 8px; border-radius: 10px;
+  transition: background .15s ease, border-color .15s ease, transform .08s ease;
+  border: 1px solid transparent;
+  &:hover { background: var(--surface-input); } /* <-- ЗМІНЕНО */
+  input { appearance: none; width: 16px; height: 16px; border-radius: 4px;
+    border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+    background: var(--surface-input); /* <-- ЗМІНЕНО */
+    display: grid; place-items: center;
+  }
+  input:checked {
+    border-color: var(--accent-yellow);
+    background: linear-gradient(180deg, var(--accent-yellow), var(--accent-yellow-dark)); /* <-- ЗМІНЕНО */
+    box-shadow: 0 4px 12px var(--shadow-neon); /* <-- ЗМІНЕНО */
+  }
+`;
+const Chipbar = styled.div`
+  display: flex; flex-wrap: wrap;
+  gap: 8px; margin: 6px 0 18px;
+`;
+const Chip = styled.button`
+  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  border-radius: 999px; padding: 6px 10px; font-size: 11px;
+  color: var(--text-secondary); /* <-- ЗМІНЕНО */
+  display: inline-flex; gap: 8px; align-items: center; cursor: pointer;
+`;
+const ProductsGrid = styled.div`
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  @media (min-width: 541px) and (max-width: 1100px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+  }
+  @media (min-width: 1101px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px;
+  }
+`;
+const ProductItem = styled(motion.div)`min-width: 0;`;
+const fmItem = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
+
+const Pager = styled.div`
+  display:flex; justify-content:center; align-items:center;
+  gap: 12px; margin-top: 28px; flex-wrap: wrap;
+`;
+const PagerLabel = styled.span`
+  font-size: 12px; opacity: .85;
+  padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+`;
+const PagerBtn = styled.button`
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 800; letter-spacing: .2px;
+  color: ${({disabled})=>disabled?'var(--text-secondary)':'var(--text-primary)'}; /* <-- ЗМІНЕНО */
+  border: 1px solid ${({disabled})=>disabled?'var(--border-input)':'var(--accent-turquoise)'}; /* <-- ЗМІНЕНО */
+  background: ${({disabled})=>disabled
+    ? 'var(--surface-input)'
+    : 'linear-gradient(180deg, rgba(0,245,255,.10), rgba(255,215,0,.08))'}; /* <-- ЗМІНЕНО */
+  box-shadow: ${({disabled})=>disabled?'none':'0 12px 30px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(255,255,255,.08)'}; /* <-- ЗМІНЕНО */
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease, opacity .2s ease;
+  cursor: ${({disabled})=>disabled?'not-allowed':'pointer'};
+  &:hover { transform: ${({disabled})=>disabled?'none':'translateY(-1px)'}; }
+  &:active { transform: ${({disabled})=>disabled?'none':'translateY(0) scale(.98)'}; }
+`;
+/* ======================== Helpers (без змін) ======================== */
+
+function useQuery() {
+  const loc = useLocation();
+  return useMemo(() => new URLSearchParams(loc.search), [loc.search]);
+}
+
+/* ======================== Page (без змін в логіці) ======================== */
 
 export default function Products() {
   const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState('');
-  const [newOnly, setNewOnly] = useState(false);
-  const [usedOnly, setUsedOnly] = useState(false);
-  const [inStockOnly, setInStockOnly] = useState(false);
-  const [category, setCategory] = useState('all');
-  const [sort, setSort] = useState('name:asc');
-  const [priceMin, setPriceMin] = useState('');
-  const [priceMax, setPriceMax] = useState('');
-  const [selectedGenres, setSelectedGenres] = useState(new Set());
-  const [page, setPage] = useState(1);
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [isGenresOpen, setIsGenresOpen] = useState(false);
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
-  const categoryButtonRef = useRef(null);
-  const sortButtonRef = useRef(null);
-  const perPage = 12;
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  
+  const params = useQuery();
+  const navigate = useNavigate();
+  const loc = useLocation();
+  
+  // URL -> state
+  const categoryId  = params.get('category') || '';
+  const sortOption  = params.get('sort') || '';
+  const page        = parseInt(params.get('page') || '1', 10);
+  const minPrice    = params.get('minPrice') || '';
+  const maxPrice    = params.get('maxPrice') || '';
+  const searchParam = params.get('search') || '';
+  const typesParam  = params.get('types')  || '';
+  const platsParam  = params.get('platforms') || '';
 
-  // Variants for dropdown animation
-  const dropdownVariants = {
-    hidden: { opacity: 0, y: -10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
-    exit: { opacity: 0, y: -10, transition: { duration: 0.2, ease: 'easeIn' } }
-  };
+  // UI state for filter inputs
+  const [ui, setUi] = useState({
+    search: searchParam,
+    minPrice, maxPrice,
+    category: categoryId,
+    types: {
+      consoles: typesParam.includes('consoles'),
+      games:    typesParam.includes('games'),
+      accs:     typesParam.includes('accs'),
+    },
+    platforms: {
+      sony: platsParam.includes('sony'),
+      xbox: platsParam.includes('xbox'),
+      nintendo: platsParam.includes('nintendo'),
+      steamdeck: platsParam.includes('steamdeck'),
+    }
+  });
 
-  // Variants for filters panel animation
-  const filtersPanelVariants = {
-    hidden: { x: '-100%', opacity: 0 },
-    visible: { x: 0, opacity: 1, transition: { duration: 0.3, ease: 'easeOut' } },
-    exit: { x: '-100%', opacity: 0, transition: { duration: 0.2, ease: 'easeIn' } }
-  };
-
-  // Variants for genres accordion
-  const genresVariants = {
-    hidden: { height: 0, opacity: 0 },
-    visible: { height: 'auto', opacity: 1, transition: { duration: 0.3, ease: 'easeOut' } },
-    exit: { height: 0, opacity: 0, transition: { duration: 0.2, ease: 'easeIn' } }
-  };
-
+  // Синхронізація UI state при зміні URL (напр. клік по табу категорії)
   useEffect(() => {
-    // Імітація завантаження
-    setTimeout(() => {
-      const adaptedProducts = testProducts.map(p => ({
-        ...p,
-        category: ['playstation', 'xbox', 'nintendo', 'steamdeck', 'retro'].includes(p.category) ? p.category : 'retro',
-        condition: p.condition || (Math.random() > 0.5 ? 'new' : 'used'),
-        genre: p.name.includes('Mario') ? 'platformer' : 
-               p.name.includes('Kart') ? 'racing' : 
-               p.name.includes('Sonic') ? 'platformer' : 
-               p.name.includes('Zelda') ? 'adventure' : 
-               p.name.includes('Spider') ? 'action' : 
-               Math.random() > 0.8 ? 'rpg' : 'shooter' // Демо жанри для інших
-      }));
-      setProducts(adaptedProducts);
-    }, 500);
-  }, []);
-
-  const categories = useMemo(() => [
-    { value: 'all', label: 'Всі Категорії' },
-    { value: 'playstation', label: 'Playstation' },
-    { value: 'xbox', label: 'Xbox' },
-    { value: 'nintendo', label: 'Nintendo' },
-    { value: 'steamdeck', label: 'Steamdeck' },
-    { value: 'retro', label: 'Retro' }
-  ], []);
-
-  const sortOptions = useMemo(() => [
-    { value: 'name:asc', label: 'Назва (A-Z)' },
-    { value: 'name:desc', label: 'Назва (Z-A)' },
-    { value: 'price:asc', label: 'Ціна (зростання)' },
-    { value: 'price:desc', label: 'Ціна (зменшення)' }
-  ], []);
-
-  const genres = useMemo(() => [
-    { key: 'action', label: 'Екшн' },
-    { key: 'adventure', label: 'Пригоди' },
-    { key: 'rpg', label: 'Рольова гра (RPG)' },
-    { key: 'shooter', label: 'Шутер' },
-    { key: 'sports', label: 'Спорт' },
-    { key: 'simulation', label: 'Симулятор' },
-    { key: 'strategy', label: 'Стратегія' },
-    { key: 'battle_royale', label: 'Батл-рояль' },
-    { key: 'fighting', label: 'Бойовик' },
-    { key: 'platformer', label: 'Платформер' },
-    { key: 'racing', label: 'Гонки' },
-    { key: 'horror', label: 'Хорор' },
-    { key: 'puzzle', label: 'Головоломка' },
-    { key: 'sandbox', label: 'Пісочниця' },
-    { key: 'mmo', label: 'ММО' },
-    { key: 'stealth', label: 'Стелс' },
-    { key: 'turn_based_strategy', label: 'Пошагова стратегія' },
-    { key: 'open_world', label: 'Відкритий світ' },
-    { key: 'music_rhythm', label: 'Музичний/Ритм' },
-    { key: 'card_games', label: 'Карти' },
-    { key: 'tower_defense', label: 'Захист веж' },
-    { key: 'moba', label: 'МОБА' },
-    { key: 'survival', label: 'Виживання' },
-    { key: 'hack_and_slash', label: 'Хак-енд-слэш' },
-    { key: 'visual_novel', label: 'Візуальна новела' }
-  ], []);
-
-  const filtered = useMemo(() => {
-    let list = products
-      .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-      .filter(p => newOnly ? p.condition === 'new' : true)
-      .filter(p => usedOnly ? p.condition === 'used' : true)
-      .filter(p => category === 'all' ? true : p.category === category)
-      .filter(p => inStockOnly ? (p.stock > 0 || p.stock === undefined) : true) // Фікс для undefined stock
-      .filter(p => priceMin ? p.price >= parseInt(priceMin) || 0 : true) // Фікс NaN
-      .filter(p => priceMax ? p.price <= parseInt(priceMax) || Infinity : true) // Фікс NaN
-      .filter(p => selectedGenres.size === 0 || selectedGenres.has(p.genre));
-
-    const [field, dir] = sort.split(':');
-    list.sort((a, b) => {
-      if (field === 'price') return dir === 'asc' ? a.price - b.price : b.price - a.price;
-      if (field === 'name') return dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-      return 0;
-    });
-
-    return list;
-  }, [products, search, newOnly, usedOnly, category, inStockOnly, sort, priceMin, priceMax, selectedGenres]);
-
-  const totalPages = Math.ceil(filtered.length / perPage) || 1; // Фікс NaN
-
-  // Динамічне позиціонування меню
-  const getDropdownPosition = (buttonRef) => {
-    if (!buttonRef.current) return { top: 0, left: 0 };
-    const rect = buttonRef.current.getBoundingClientRect();
-    return {
-      top: rect.bottom + window.scrollY,
-      left: rect.left + window.scrollX,
-      maxHeight: window.innerHeight - rect.bottom - 20,
-      overflowY: 'auto'
-    };
-  };
-
-  // Закрити фільтри при кліку поза ними
+    setUi(s => ({
+      ...s,
+      search: searchParam,
+      minPrice, maxPrice,
+      category: categoryId,
+      types: {
+        consoles: typesParam.includes('consoles'),
+        games:    typesParam.includes('games'),
+        accs:     typesParam.includes('accs'),
+      },
+      platforms: {
+        sony: platsParam.includes('sony'),
+        xbox: platsParam.includes('xbox'),
+        nintendo: platsParam.includes('nintendo'),
+        steamdeck: platsParam.includes('steamdeck'),
+      }
+    }));
+  }, [categoryId, minPrice, maxPrice, searchParam, typesParam, platsParam]);
+  
+  /* ---------- Fetch products ---------- */
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isFiltersOpen && !event.target.closest('.filters-panel')) {
-        setIsFiltersOpen(false);
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const qs = params.toString();
+        const { data } = await axios.get(`http://localhost:5000/api/products?${qs}`);
+        setProducts(data?.products || []);
+        const total = data?.total ?? 0;
+        setTotalPages(Math.max(1, Math.ceil(total / 20))); // limit=20
+      } catch (err) {
+        setError('Помилка завантаження товарів');
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isFiltersOpen]);
-
-  // Фікс скролу: блокувати body scroll коли фільтри відкриті
+    fetchProducts();
+  }, [params]);
+  
+  /* ---------- Fetch categories ---------- */
   useEffect(() => {
-    if (isFiltersOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
+    const fetchCategories = async () => {
+      try {
+        const { data } = await axios.get('http://localhost:5000/api/products/categories');
+        setCategories(data || []);
+      } catch (err) {
+        console.error('Помилка завантаження категорій:', err);
+      }
     };
-  }, [isFiltersOpen]);
-
-  const toggleGenre = (genreKey) => {
-    const newSet = new Set(selectedGenres);
-    if (newSet.has(genreKey)) {
-      newSet.delete(genreKey);
-    } else {
-      newSet.add(genreKey);
-    }
-    setSelectedGenres(newSet);
+    fetchCategories();
+  }, []);
+  
+  /* ---------- URL helpers ---------- */
+  const updateUrl = useCallback((entries) => {
+    const p = new URLSearchParams(loc.search);
+    Object.entries(entries).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === '') p.delete(k);
+      else p.set(k, String(v));
+    });
+    p.set('page', '1'); // при зміні фільтрів — завжди на 1 сторінку
+    navigate(`${loc.pathname}?${p.toString()}`, { replace: true });
+  }, [loc.pathname, loc.search, navigate]);
+  
+  const applyFilters = (next = ui) => {
+    const typesStr = Object.entries(next.types).filter(([,v])=>v).map(([k])=>k).join(',');
+    const platsStr = Object.entries(next.platforms).filter(([,v])=>v).map(([k])=>k).join(',');
+    updateUrl({
+      category: next.category || '',
+      minPrice: next.minPrice || '',
+      maxPrice: next.maxPrice || '',
+      search:   next.search || '',
+      types:    typesStr || '',
+      platforms: platsStr || ''
+    });
   };
 
+  const resetAll = () => {
+    const blank = {
+      search: '',
+      minPrice: '', maxPrice: '',
+      category: '',
+      types: { consoles:false, games:false, accs:false },
+      platforms: { sony:false, xbox:false, nintendo:false, steamdeck:false }
+    };
+    setUi(blank);
+    // Скидаємо всі параметри в URL
+    navigate(loc.pathname, { replace: true });
+  };
+  
+  const setSort = (val) => {
+    const p = new URLSearchParams(loc.search);
+    p.set('page', '1');
+    if (val) p.set('sort', val);
+    else p.delete('sort');
+    navigate(`${loc.pathname}?${p.toString()}`);
+  };
+
+  const handlePageChange = (newPage) => {
+    const p = new URLSearchParams(loc.search);
+    p.set('page', String(newPage));
+    navigate(`${loc.pathname}?${p.toString()}`);
+  };
+
+  /* ---------- Active chips ---------- */
+  const activeChips = [];
+  if (categoryId) {
+    const found = categories.find(c => String(c.id) === String(categoryId));
+    activeChips.push({ key: 'category', label: found?.name || `Категорія #${categoryId}` });
+  }
+  if (minPrice) activeChips.push({ key: 'minPrice', label: `Від ${minPrice} грн` });
+  if (maxPrice) activeChips.push({ key: 'maxPrice', label: `До ${maxPrice} грн` });
+  if (typesParam) {
+    const arr = [];
+    if (typesParam.includes('consoles')) arr.push('Консолі');
+    if (typesParam.includes('games'))    arr.push('Ігри');
+    if (typesParam.includes('accs'))     arr.push('Аксесуари');
+    if (arr.length) activeChips.push({ key: 'types', label: `Тип: ${arr.join(', ')}` });
+  }
+  if (platsParam) {
+    const arr = [];
+    if (platsParam.includes('sony'))     arr.push('Sony');
+    if (platsParam.includes('xbox'))     arr.push('Xbox');
+    if (platsParam.includes('nintendo')) arr.push('Nintendo');
+    if (platsParam.includes('steamdeck'))arr.push('Steam Deck');
+    if (arr.length) activeChips.push({ key: 'platforms', label: `Платформа: ${arr.join(', ')}` });
+  }
+  if (searchParam) activeChips.push({ key: 'search', label: `Пошук: "${searchParam}"` });
+  
+  const clearFilter = (key) => {
+    updateUrl({ [key]: '' });
+  };
+  
+  /* ======================== Render (ОНОВЛЕНО) ======================== */
+  if (error) return <p className="p center" style={{ color: 'var(--accent-pink)' }}>{error}</p>; // <-- ЗМІНЕНО
+  
   return (
-    <div className="container" style={{ marginTop: 24, position: 'relative', zIndex: 1 }}>
-      {/* Кнопка Фільтри */}
-      <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 24 }}>
-        <motion.button
-          className="btn btn-outline shimmer"
-          onClick={() => setIsFiltersOpen(true)}
-          whileHover={{ scale: 1.05, boxShadow: '0 0 20px var(--turquoise)' }}
-          whileTap={{ scale: 0.95 }}
-          style={{
-            borderRadius: '999px',
-            padding: '12px 24px',
-            fontFamily: 'Press Start 2P, cursive',
-            fontSize: 12,
-            textShadow: '0 0 5px var(--pink)',
-            background: 'linear-gradient(180deg, rgba(0,245,255,0.1), rgba(0,245,255,0.05))' // Glow ефект
-          }}
-        >
-          Фільтри ▼
-        </motion.button>
-      </div>
-
-      {/* Панель Фільтрів */}
-      <AnimatePresence>
-        {isFiltersOpen && (
-          <>
-            {/* Оверлей — з вищим z-index */}
-            <motion.div
-              className="surface"
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.7)',
-                backdropFilter: 'blur(5px)',
-                zIndex: 999, // Високий, щоб футер не накладався
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start'
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsFiltersOpen(false)}
-            />
-            {/* Бокова панель — з вищим z-index і overflow auto */}
-            <motion.div
-              className="surface filters-panel"
-              variants={filtersPanelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              style={{
-                position: 'fixed',
-                top: '80px',
-                left: 0,
-                width: 'min(500px, 85%)',
-                height: 'calc(100vh - 80px)',
-                padding: 24,
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                msOverflowStyle: 'none',
-                scrollbarWidth: 'none',
-                zIndex: 1000, // Вище оверлея і футера
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 24,
-                boxShadow: 'var(--shadow-card), 10px 0 30px rgba(0,0,0,0.5)',
-                background: 'linear-gradient(180deg, rgba(26,26,26,0.98), rgba(12,12,12,0.98))' // Шиммер ефект
-              }}
-            >
-              <style jsx>{`
-                .filters-panel::-webkit-scrollbar {
-                  display: none;
-                }
-              `}</style>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 className="h2 mono" style={{ color: 'var(--yellow)', margin: 0, textShadow: '0 0 5px var(--pink)' }}>Фільтри Каталогу</h2>
-                <motion.button
-                  className="btn-outline"
-                  onClick={() => setIsFiltersOpen(false)}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{ padding: '8px 12px', fontSize: 10, borderRadius: '50%', background: 'rgba(255,0,127,0.1)' }}
-                >
-                  ×
-                </motion.button>
-              </div>
-
-              {/* Пошук */}
-              <input
-                className="input"
-                placeholder="Пошук по назвах..."
-                onChange={e => setSearch(e.target.value)}
-                style={{ borderRadius: '999px', fontFamily: 'Press Start 2P, cursive', fontSize: 12, textShadow: '0 0 5px var(--pink)' }}
-              />
-
-              {/* Категорії */}
-              <div style={{ position: 'relative' }}>
-                <motion.button
-                  ref={categoryButtonRef}
-                  className="input"
-                  onClick={() => {
-                    setCategoryDropdownOpen(prev => !prev);
-                    if (categoryDropdownOpen) setCategory('all');
-                  }}
-                  whileHover={{ scale: 1.05, boxShadow: '0 0 20px var(--turquoise)' }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    borderRadius: '999px',
-                    fontFamily: 'Press Start 2P, cursive',
-                    fontSize: 12,
-                    textShadow: '0 0 5px var(--pink)',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '12px 14px',
-                    background: 'rgba(255,255,255,.04)',
-                    border: '1px solid rgba(255,255,255,.12)',
-                    color: 'var(--yellow)',
-                  }}
-                >
-                  {categories.find(c => c.value === category)?.label} ▼
-                </motion.button>
-                <AnimatePresence>
-                  {categoryDropdownOpen && (
-                    <motion.ul
-                      style={{
-                        listStyle: 'none',
-                        padding: 12,
-                        background: 'linear-gradient(180deg, rgba(26,26,26,.95), rgba(12,12,12,.95))',
-                        border: '2px solid var(--yellow)',
-                        borderRadius: 'var(--radius)',
-                        boxShadow: '0 0 20px var(--yellow), var(--shadow-card)',
-                        position: 'absolute',
-                        width: '100%',
-                        zIndex: 1001,
-                        top: '100%',
-                        left: 0,
-                      }}
-                      variants={dropdownVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                    >
-                      {categories.map(cat => (
-                        <motion.li
-                          key={cat.value}
-                          whileHover={{ background: 'rgba(255,215,0,.15)', translateX: 5 }}
-                          style={{ marginBottom: 4 }}
-                        >
-                          <button
-                            onClick={() => {
-                              setCategory(cat.value);
-                              setCategoryDropdownOpen(false);
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              background: category === cat.value ? 'rgba(255,215,0,.15)' : 'transparent',
-                              color: 'var(--yellow)',
-                              textAlign: 'left',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontFamily: 'Press Start 2P, cursive !important',
-                              fontSize: 12,
-                              textShadow: '0 0 5px var(--pink)',
-                            }}
-                          >
-                            {cat.label}
-                          </button>
-                        </motion.li>
-                      ))}
-                    </motion.ul>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Сортування */}
-              <div style={{ position: 'relative' }}>
-                <motion.button
-                  ref={sortButtonRef}
-                  className="input"
-                  onClick={() => {
-                    setSortDropdownOpen(prev => !prev);
-                    if (sortDropdownOpen) setSort('name:asc');
-                  }}
-                  whileHover={{ scale: 1.05, boxShadow: '0 0 20px var(--turquoise)' }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    borderRadius: '999px',
-                    fontFamily: 'Press Start 2P, cursive',
-                    fontSize: 12,
-                    textShadow: '0 0 5px var(--pink)',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '12px 14px',
-                    background: 'rgba(255,255,255,.04)',
-                    border: '1px solid rgba(255,255,255,.12)',
-                    color: 'var(--yellow)',
-                  }}
-                >
-                  {sortOptions.find(s => s.value === sort)?.label} ▼
-                </motion.button>
-                <AnimatePresence>
-                  {sortDropdownOpen && (
-                    <motion.ul
-                      style={{
-                        listStyle: 'none',
-                        padding: 12,
-                        background: 'linear-gradient(180deg, rgba(26,26,26,.95), rgba(12,12,12,.95))',
-                        border: '2px solid var(--yellow)',
-                        borderRadius: 'var(--radius)',
-                        boxShadow: '0 0 20px var(--yellow), var(--shadow-card)',
-                        position: 'absolute',
-                        width: '100%',
-                        zIndex: 1001,
-                        top: '100%',
-                        left: 0,
-                      }}
-                      variants={dropdownVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                    >
-                      {sortOptions.map(s => (
-                        <motion.li
-                          key={s.value}
-                          whileHover={{ background: 'rgba(255,215,0,.15)', translateX: 5 }}
-                          style={{ marginBottom: 4 }}
-                        >
-                          <button
-                            onClick={() => {
-                              setSort(s.value);
-                              setSortDropdownOpen(false);
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '8px 12px',
-                              background: sort === s.value ? 'rgba(255,215,0,.15)' : 'transparent',
-                              color: 'var(--yellow)',
-                              textAlign: 'left',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontFamily: 'Press Start 2P, cursive !important',
-                              fontSize: 12,
-                              textShadow: '0 0 5px var(--pink)',
-                            }}
-                          >
-                            {s.label}
-                          </button>
-                        </motion.li>
-                      ))}
-                    </motion.ul>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Ціна */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <input
-                  className="input"
-                  type="number"
-                  placeholder="Ціна від..."
-                  onChange={e => setPriceMin(e.target.value)}
-                  style={{ borderRadius: '999px', fontFamily: 'Press Start 2P, cursive', fontSize: 12, textShadow: '0 0 5px var(--pink)' }}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  placeholder="Ціна до..."
-                  onChange={e => setPriceMax(e.target.value)}
-                  style={{ borderRadius: '999px', fontFamily: 'Press Start 2P, cursive', fontSize: 12, textShadow: '0 0 5px var(--pink)' }}
-                />
-              </div>
-
-              {/* Чекбокси */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-                <label className="center" style={{ gap: 8, background: 'rgba(255,255,255,.04)', padding: '10px 20px', borderRadius: '999px' }}>
-                  <input type="checkbox" checked={newOnly} onChange={e => setNewOnly(e.target.checked)} />
-                  <span className="p" style={{ fontFamily: 'Press Start 2P, cursive', textShadow: '0 0 5px var(--pink)' }}>Нові (Новинки)</span>
-                </label>
-                <label className="center" style={{ gap: 8, background: 'rgba(255,255,255,.04)', padding: '10px 20px', borderRadius: '999px' }}>
-                  <input type="checkbox" checked={usedOnly} onChange={e => setUsedOnly(e.target.checked)} />
-                  <span className="p" style={{ fontFamily: 'Press Start 2P, cursive', textShadow: '0 0 5px var(--pink)' }}>Вживані</span>
-                </label>
-                <label className="center" style={{ gap: 8, background: 'rgba(255,255,255,.04)', padding: '10px 20px', borderRadius: '999px' }}>
-                  <input type="checkbox" checked={inStockOnly} onChange={e => setInStockOnly(e.target.checked)} />
-                  <span className="p" style={{ fontFamily: 'Press Start 2P, cursive', textShadow: '0 0 5px var(--pink)' }}>Лише в Наявності</span>
-                </label>
-              </div>
-
-              {/* Жанри - окрема вкладка/секція з accordion */}
-              <div>
-                <motion.button
-                  className="input"
-                  onClick={() => setIsGenresOpen(!isGenresOpen)}
-                  whileHover={{ scale: 1.02, boxShadow: '0 0 10px var(--turquoise)' }}
-                  whileTap={{ scale: 0.98 }}
-                  style={{
-                    borderRadius: '999px',
-                    fontFamily: 'Press Start 2P, cursive',
-                    fontSize: 12,
-                    textShadow: '0 0 5px var(--pink)',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '12px 14px',
-                    background: 'rgba(255,255,255,.04)',
-                    border: '1px solid rgba(255,255,255,.12)',
-                    color: 'var(--turquoise)',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <span>Жанри {isGenresOpen ? '▲' : '▼'}</span>
-                </motion.button>
-                <AnimatePresence>
-                  {isGenresOpen && (
-                    <motion.div
-                      variants={genresVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                      style={{ overflow: 'hidden' }}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxHeight: 300, overflowY: 'auto', WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-                        <style jsx>{`
-                          div[style*="maxHeight"]::-webkit-scrollbar {
-                            display: none;
-                          }
-                        `}</style>
-                        {genres.map(genre => (
-                          <label key={genre.key} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.04)', padding: '8px 12px', borderRadius: '999px', cursor: 'pointer' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedGenres.has(genre.key)}
-                              onChange={() => toggleGenre(genre.key)}
-                              style={{ cursor: 'pointer' }}
-                            /> 
-                            <span className="p" style={{ fontSize: 10, textShadow: '0 0 3px var(--pink)' }}>
-                              {genre.label}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <motion.button
-                className="btn shimmer"
-                onClick={() => setIsFiltersOpen(false)}
-                style={{ width: '100%', marginTop: 10 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+    <Page className="container">
+      <HeaderBar>
+        <h1 className="h1 retro" style={{ textAlign: 'center', marginBottom: 4 }}>Каталог товарів</h1>
+        {categories.length > 0 && (
+          <Tabs>
+            <Link to="/products" className={`tab-btn ${!categoryId ? 'active' : ''}`}>Всі категорії</Link>
+            {categories.map(cat => (
+              <Link
+                key={cat.id}
+                to={`/products?${new URLSearchParams({ category: String(cat.id) }).toString()}`}
+                className={`tab-btn ${String(categoryId) === String(cat.id) ? 'active' : ''}`}
               >
-                Застосувати Фільтри
-              </motion.button>
-            </motion.div>
+                {cat.name}
+              </Link>
+            ))}
+          </Tabs>
+        )}
+      </HeaderBar>
+
+      <Layout>
+        <Sidebar>
+            <Group>
+                <GroupTitle>Пошук</GroupTitle>
+                <Box>
+                    <SearchInput
+                        placeholder="Назва товару..."
+                        value={ui.search}
+                        onChange={e => setUi(s => ({ ...s, search: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
+                    />
+                </Box>
+            </Group>
+            <Group>
+                <GroupTitle>Ціна, грн</GroupTitle>
+                <Box>
+                    <Row>
+                        <NumberInput type="number" inputMode="numeric" placeholder="Від" value={ui.minPrice} onChange={e => setUi(s => ({ ...s, minPrice: e.target.value }))} />
+                        <NumberInput type="number" inputMode="numeric" placeholder="До" value={ui.maxPrice} onChange={e => setUi(s => ({ ...s, maxPrice: e.target.value }))} />
+                    </Row>
+                </Box>
+            </Group>
+            <Group>
+                <GroupTitle>Тип</GroupTitle>
+                <Box>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                        <Check><input type="checkbox" checked={ui.types.consoles} onChange={() => setUi(s => ({ ...s, types: { ...s.types, consoles: !s.types.consoles } }))} />Консолі</Check>
+                        <Check><input type="checkbox" checked={ui.types.games} onChange={() => setUi(s => ({ ...s, types: { ...s.types, games: !s.types.games } }))} />Ігри</Check>
+                        <Check><input type="checkbox" checked={ui.types.accs} onChange={() => setUi(s => ({ ...s, types: { ...s.types, accs: !s.types.accs } }))} />Аксесуари</Check>
+                    </div>
+                </Box>
+            </Group>
+            <Group>
+                <GroupTitle>Платформи</GroupTitle>
+                <Box>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                        <Check><input type="checkbox" checked={ui.platforms.sony} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, sony: !s.platforms.sony } }))} />Sony / PlayStation</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.xbox} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, xbox: !s.platforms.xbox } }))} />Xbox</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.nintendo} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, nintendo: !s.platforms.nintendo } }))} />Nintendo</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.steamdeck} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, steamdeck: !s.platforms.steamdeck } }))} />Steam Deck</Check>
+                    </div>
+                </Box>
+            </Group>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: 'column' }}>
+                <GButton variant="primary" onClick={() => applyFilters()}>Застосувати</GButton>
+                <GButton variant="danger" onClick={resetAll}>Очистити всі</GButton>
+            </div>
+        </Sidebar>
+
+        <div>
+            {activeChips.length > 0 && (
+                <Chipbar>
+                    {activeChips.map((c, i) => (
+                        <Chip key={i} onClick={() => clearFilter(c.key)} title="Скинути">
+                            <span>{c.label}</span><span aria-hidden>×</span>
+                        </Chip>
+                    ))}
+                    <Chip onClick={resetAll} title="Очистити всі">Очистити всі ×</Chip>
+                </Chipbar>
+            )}
+
+            <TopControls>
+                <FilterBtn onClick={() => setSheetOpen(true)}>⚙️ Фільтри та сортування</FilterBtn>
+                <SortRow>
+                    <SortBtn active={sortOption === 'newest'} onClick={() => setSort('newest')}>Нові</SortBtn>
+                    <SortBtn active={sortOption === 'price-asc'} onClick={() => setSort('price-asc')}>Дешевші</SortBtn>
+                    <SortBtn active={sortOption === 'price-desc'} onClick={() => setSort('price-desc')}>Дорожчі</SortBtn>
+                </SortRow>
+            </TopControls>
+
+            {loading ? (
+                <p className="p center" style={{ marginTop: 20, color: 'var(--text-secondary)' }}>Завантаження товарів...</p> /* <-- ЗМІНЕНО */
+            ) : (
+                <>
+                    <ProductsGrid>
+                        <AnimatePresence>
+                            {products.map((product) => (
+                                <ProductItem key={product._id} variants={fmItem} initial="hidden" animate="visible" exit="hidden" layout>
+                                    <ProductCard product={product} />
+                                </ProductItem>
+                            ))}
+                        </AnimatePresence>
+                    </ProductsGrid>
+                    {products.length === 0 && !loading && (
+                        <p className="p center" style={{ color: 'var(--text-secondary)', marginTop: 20 }}> {/* <-- ЗМІНЕНО */}
+                            Товарів не знайдено. Спробуйте змінити фільтри.
+                        </p>
+                    )}
+                </>
+            )}
+
+            {products.length > 0 && totalPages > 1 && (
+                <Pager>
+                    <PagerBtn disabled={page === 1} onClick={() => handlePageChange(page - 1)}>← Попередня</PagerBtn>
+                    <PagerLabel>Сторінка {page} з {totalPages}</PagerLabel>
+                    <PagerBtn disabled={page === totalPages} onClick={() => handlePageChange(page + 1)}>Наступна →</PagerBtn>
+                </Pager>
+            )}
+        </div>
+    </Layout>
+      
+      {/* Mobile Top Sheet (Фільтри зверху) */}
+      <AnimatePresence>
+        {sheetOpen && (
+          <>
+            <SheetOverlay
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setSheetOpen(false)}
+            />
+            <SheetPanel
+              initial={{ y: '-100%' }} animate={{ y: 0 }} exit={{ y: '-100%' }}
+              transition={{ type: 'tween', duration: .25 }}
+              onClick={(e)=>e.stopPropagation()}
+            >
+              <SheetHeader>
+                <div className="mono" style={{ color:'var(--accent-turquoise)' }}>Фільтри</div> {/* <-- ЗМІНЕНО */}
+                <GButton variant="outline" onClick={() => setSheetOpen(false)}>Закрити ×</GButton>
+              </SheetHeader>
+              <SheetBody>
+                {/* Вміст мобільних фільтрів аналогічний десктопним */}
+                <Group>
+                  <GroupTitle>Пошук</GroupTitle>
+                  <Box>
+                    <SearchInput placeholder="Назва товару..." value={ui.search} onChange={e=>setUi(s=>({ ...s, search: e.target.value }))} />
+                  </Box>
+                </Group>
+                 <Group>
+                    <GroupTitle>Ціна, грн</GroupTitle>
+                    <Box>
+                        <Row>
+                            <NumberInput type="number" inputMode="numeric" placeholder="Від" value={ui.minPrice} onChange={e=>setUi(s=>({ ...s, minPrice: e.target.value }))} />
+                            <NumberInput type="number" inputMode="numeric" placeholder="До" value={ui.maxPrice} onChange={e=>setUi(s=>({ ...s, maxPrice: e.target.value }))} />
+                        </Row>
+                    </Box>
+                </Group>
+                <Group>
+                    <GroupTitle>Тип</GroupTitle>
+                    <Box>
+                        <div style={{ display:'grid', gap: 6 }}>
+                            <Check><input type="checkbox" checked={ui.types.consoles} onChange={()=>setUi(s=>({ ...s, types:{...s.types, consoles:!s.types.consoles} }))} />Консолі</Check>
+                            <Check><input type="checkbox" checked={ui.types.games}    onChange={()=>setUi(s=>({ ...s, types:{...s.types, games:!s.types.games} }))} />Ігри</Check>
+                            <Check><input type="checkbox" checked={ui.types.accs}     onChange={()=>setUi(s=>({ ...s, types:{...s.types, accs:!s.types.accs} }))} />Аксесуари</Check>
+                        </div>
+                    </Box>
+                </Group>
+                <Group>
+                  <GroupTitle>Платформи</GroupTitle>
+                  <Box>
+                    <div style={{ display:'grid', gap: 6 }}>
+                        <Check><input type="checkbox" checked={ui.platforms.sony} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, sony:!s.platforms.sony} }))} />Sony / PlayStation</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.xbox} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, xbox:!s.platforms.xbox} }))} />Xbox</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.nintendo} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, nintendo:!s.platforms.nintendo} }))} />Nintendo</Check>
+                        <Check><input type="checkbox" checked={ui.platforms.steamdeck} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, steamdeck:!s.platforms.steamdeck} }))} />Steam Deck</Check>
+                    </div>
+                  </Box>
+                </Group>
+              </SheetBody>
+              <SheetFooter>
+                <GButton variant="danger" onClick={resetAll}>Очистити</GButton>
+                <GButton variant="primary" onClick={()=>{ applyFilters(); setSheetOpen(false); }} full>Застосувати</GButton>
+              </SheetFooter>
+            </SheetPanel>
           </>
         )}
       </AnimatePresence>
-
-      {/* Каталог — з shimmer і анімацією */}
-      <div className="grid grid-4 shimmer" style={{ gap: 24 }}>
-        {filtered.slice((page - 1) * perPage, page * perPage).map(p => <ProductCard key={p._id} product={p} />)}
-      </div>
-      {filtered.length === 0 && (
-        <div className="p center" style={{ padding: 40, fontFamily: 'Press Start 2P, cursive', textShadow: '0 0 5px var(--pink)' }}>
-          Нічого не знайдено. Спробуйте інші фільтри!
-        </div>
-      )}
-
-      {/* Пагінація — з disabled стилем */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 32, marginBottom: 40 }}>
-        <button
-          className="btn-outline shimmer"
-          disabled={page === 1}
-          onClick={() => setPage(p => p - 1)}
-          style={{ borderRadius: '999px', padding: '12px 24px', fontFamily: 'Press Start 2P, cursive', fontSize: 12, textShadow: '0 0 5px var(--pink)', opacity: page === 1 ? 0.5 : 1, cursor: page === 1 ? 'not-allowed' : 'pointer' }}
-        >
-          ← Попередня
-        </button>
-        <span className="p" style={{ alignSelf: 'center', fontFamily: 'Press Start 2P, cursive', textShadow: '0 0 5px var(--pink)' }}>
-          Сторінка {page} з {totalPages}
-        </span>
-        <button
-          className="btn-outline shimmer"
-          disabled={page === totalPages}
-          onClick={() => setPage(p => p + 1)}
-          style={{ borderRadius: '999px', padding: '12px 24px', fontFamily: 'Press Start 2P, cursive', fontSize: 12, textShadow: '0 0 5px var(--pink)', opacity: page === totalPages ? 0.5 : 1, cursor: page === totalPages ? 'not-allowed' : 'pointer' }}
-        >
-          Наступна →
-        </button>
-      </div>
-    </div>
+    </Page>
   );
 }

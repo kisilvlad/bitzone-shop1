@@ -3,16 +3,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import formatPrice from '../utils/formatPrice'; // Не використовується, але для сумісності з іншими сторінками
+import axios from 'axios';
 
 export default function Register() {
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState({ firstName: '', lastName: '', phone: '', password: '' });
   const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
@@ -20,32 +16,33 @@ export default function Register() {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-    if (errors[name]) {
-      setErrors({ ...errors, [name]: '' });
-    }
+    if (errors[name]) setErrors({ ...errors, [name]: '' });
+    setServerError('');
   };
-
+  
+  // ——— Валідація (без змін) ———
   const validatePhone = (phone) => {
-    // Український формат: +380 XX XXX XX XX або 0XX XXX XX XX
     const phoneRegex = /^(\+380|0)\d{9}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
-
+  
   const validatePassword = (password) => {
-    // Мінімум 8 символів, з цифрою та великою літерою
     const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
     return passwordRegex.test(password);
   };
-
+  
   const validateForm = () => {
     const newErrors = {};
     if (!formData.firstName.trim()) newErrors.firstName = "Ім'я обов'язкове";
     if (!formData.lastName.trim()) newErrors.lastName = "Прізвище обов'язкове";
-    if (!formData.phone.trim()) {
+    
+    const cleanedPhone = formData.phone.replace(/\s/g, '');
+    if (!cleanedPhone) {
       newErrors.phone = "Телефон обов'язковий";
-    } else if (!validatePhone(formData.phone)) {
-      newErrors.phone = "Невірний формат телефону (наприклад: +380 67 123 45 67)";
+    } else if (!validatePhone(cleanedPhone)) {
+      newErrors.phone = "Невірний формат телефону (наприклад: 0671234567)";
     }
+
     if (!formData.password) {
       newErrors.password = "Пароль обов'язковий";
     } else if (!validatePassword(formData.password)) {
@@ -54,274 +51,157 @@ export default function Register() {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
+  
+  // ——— Логіка handleSubmit (без змін) ———
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm() && !isSubmitting) {
-      setIsSubmitting(true);
-      // Симуляція API виклику (замість реального бекенду)
-      setTimeout(() => {
-        // Збереження в localStorage для демо (в реальності - POST на сервер)
-        const users = JSON.parse(localStorage.getItem('bitzone_users') || '[]');
-        const newUser = { ...formData, id: Date.now().toString() };
-        users.push(newUser);
-        localStorage.setItem('bitzone_users', JSON.stringify(users));
-        
-        alert(`Реєстрація успішна, ${formData.firstName}! Тепер увійдіть у акаунт.`);
-        setSuccess(true);
-        setIsSubmitting(false);
-        // Redirect на login через 1.5s
-        setTimeout(() => navigate('/login'), 1500);
-      }, 1500);
+    setServerError('');
+    if (!validateForm() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const cleaned = formData.phone.replace(/\D/g, '');
+      const normalizedPhone = cleaned.startsWith('0') ? `38${cleaned}` : cleaned;
+      await axios.post('http://localhost:5000/api/auth/register', {
+        ...formData,
+        phone: normalizedPhone
+      });
+      setSuccess(true);
+      setTimeout(() => navigate('/login'), 2500);
+
+    } catch (err) {
+      const message = err.response?.data?.message || 'Сталася помилка. Спробуйте ще раз.';
+      setServerError(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  // Анімації
-  const formVariants = {
-    hidden: { opacity: 0, y: 30, scale: 0.95 },
-    visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.6, ease: 'easeOut' } }
+  
+  const formVariants = { hidden: { opacity: 0, y: 30, scale: 0.95 }, visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.6, ease: 'easeOut' } } };
+  const successVariants = { 
+    hidden: { scale: 0.9, opacity: 0, y: 20 }, 
+    visible: { scale: 1, opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } } 
   };
-
-  const inputVariants = {
-    focus: { scale: 1.02, boxShadow: '0 0 20px var(--turquoise)', transition: { duration: 0.2 } },
-    error: { borderColor: 'var(--pink)', boxShadow: '0 0 10px var(--pink)' }
-  };
-
-  const buttonVariants = {
-    hover: { scale: 1.05, boxShadow: '0 0 25px var(--green)', y: -2 },
-    tap: { scale: 0.98, y: 0 }
-  };
-
-  const successVariants = {
-    hidden: { scale: 0, opacity: 0, rotate: -180 },
-    visible: { scale: 1, opacity: 1, rotate: 0, transition: { duration: 0.5, ease: 'easeOut' } }
-  };
-
+  
   return (
     <section className="container">
-      <motion.div
-        variants={formVariants}
-        initial="hidden"
-        animate="visible"
-        className="surface center"
-        style={{
-          padding: 48,
-          minHeight: '60vh',
-          // Видалено maxWidth для повної ширини контейнера
-          margin: '0 auto',
-          borderRadius: 'var(--radius)',
-          boxShadow: 'var(--shadow-card), 0 0 40px rgba(76,175,80,0.1)',
-          background: 'linear-gradient(180deg, rgba(26,26,26,0.95), rgba(12,12,12,0.95))',
-          border: '1px solid rgba(76,175,80,0.2)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}
+      <motion.div 
+        variants={formVariants} 
+        initial="hidden" 
+        animate="visible" 
+        className="surface center auth-container"
+        style={{ padding: 'clamp(24px, 5vw, 48px)' }} // Додаємо padding
       >
-        {/* Фоновий градієнт для неонового ефекту */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '100%',
-          background: 'linear-gradient(45deg, rgba(76,175,80,0.05), rgba(0,245,255,0.05))',
-          pointerEvents: 'none',
-          zIndex: 0
-        }} />
-
-        <AnimatePresence>
+        <div 
+          style={{ 
+            position: 'absolute', 
+            inset: 0, 
+            background: 'linear-gradient(45deg, rgba(76,175,80,0.05), rgba(0,245,255,0.05))', 
+            pointerEvents: 'none', 
+            zIndex: 0,
+            '[data-theme="light"] &': {
+              background: 'linear-gradient(45deg, rgba(76,175,80,0.08), rgba(0,245,255,0.08))',
+            }
+          }} 
+        />
+        <AnimatePresence mode="wait">
           {!success ? (
-            <>
-              <motion.h1
-                className="h1 retro"
-                style={{
-                  marginBottom: 40, // Збільшено з 32 до 40 для більшого відступу від полів
-                  background: 'linear-gradient(45deg, var(--yellow), var(--green))',
-                  WebkitBackgroundClip: 'text',
+            <motion.div
+              key="form"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ width: '100%', maxWidth: '400px', zIndex: 1 }}
+            >
+              <motion.h1 
+                className="h1 retro" 
+                style={{ 
+                  marginBottom: '24px', 
+                  textAlign: 'center', 
+                  background: 'linear-gradient(45deg, var(--accent-yellow), var(--accent-green))', 
+                  WebkitBackgroundClip: 'text', 
                   WebkitTextFillColor: 'transparent',
-                  textShadow: '0 0 20px rgba(76,175,80,0.5)',
-                  textAlign: 'center',
-                  position: 'relative',
-                  zIndex: 1
-                }}
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
+                  '[data-theme="light"] &': {
+                     background: 'linear-gradient(45deg, var(--accent-yellow), var(--accent-green))',
+                     WebkitBackgroundClip: 'text', 
+                  }
+                }} 
+                initial={{ opacity: 0, y: -20 }} 
+                animate={{ opacity: 1, y: 0 }} 
               >
                 👤 Реєстрація
               </motion.h1>
-
-              <form onSubmit={handleSubmit} style={{ position: 'relative', zIndex: 1 }}>
-                <div className="grid grid-2" style={{ gap: 20 }}> {/* Змінено на grid-2 для двох колонок на широкому екрані */}
+              <form onSubmit={handleSubmit}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
-                    <label className="h2 mono" style={{ color: 'var(--yellow)', marginBottom: 6, display: 'block', fontSize: 12 }}>Ім'я</label>
-                    <motion.input
-                      type="text"
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      className="input"
-                      style={{ width: '100%' }}
-                      variants={inputVariants}
-                      whileFocus="focus"
-                      animate={errors.firstName ? "error" : undefined}
-                      placeholder="Введіть ім'я"
-                    />
-                    {errors.firstName && (
-                      <motion.p
-                        className="p"
-                        style={{ color: 'var(--pink)', fontSize: 10, marginTop: 4 }}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                      >
-                        {errors.firstName}
-                      </motion.p>
-                    )}
+                    <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Ім'я</label>
+                    <motion.input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="Введіть ім'я" />
+                    {errors.firstName && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.firstName}</p>}
                   </div>
-
                   <div>
-                    <label className="h2 mono" style={{ color: 'var(--yellow)', marginBottom: 6, display: 'block', fontSize: 12 }}>Прізвище</label>
-                    <motion.input
-                      type="text"
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      className="input"
-                      style={{ width: '100%' }}
-                      variants={inputVariants}
-                      whileFocus="focus"
-                      animate={errors.lastName ? "error" : undefined}
-                      placeholder="Введіть прізвище"
-                    />
-                    {errors.lastName && (
-                      <motion.p
-                        className="p"
-                        style={{ color: 'var(--pink)', fontSize: 10, marginTop: 4 }}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                      >
-                        {errors.lastName}
-                      </motion.p>
-                    )}
+                    <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Прізвище</label>
+                    <motion.input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="Введіть прізвище" />
+                    {errors.lastName && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.lastName}</p>}
                   </div>
-
                   <div>
-                    <label className="h2 mono" style={{ color: 'var(--yellow)', marginBottom: 6, display: 'block', fontSize: 12 }}>Телефон</label>
-                    <motion.input
-                      type="tel"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      className="input"
-                      style={{ width: '100%' }}
-                      variants={inputVariants}
-                      whileFocus="focus"
-                      animate={errors.phone ? "error" : undefined}
-                      placeholder="+380 67 123 45 67"
-                    />
-                    {errors.phone && (
-                      <motion.p
-                        className="p"
-                        style={{ color: 'var(--pink)', fontSize: 10, marginTop: 4 }}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                      >
-                        {errors.phone}
-                      </motion.p>
-                    )}
+                    <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Телефон</label>
+                    <motion.input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="0..." />
+                    {errors.phone && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.phone}</p>}
                   </div>
-
                   <div>
-                    <label className="h2 mono" style={{ color: 'var(--yellow)', marginBottom: 6, display: 'block', fontSize: 12 }}>Пароль</label>
-                    <motion.input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      className="input"
-                      style={{ width: '100%' }}
-                      variants={inputVariants}
-                      whileFocus="focus"
-                      animate={errors.password ? "error" : undefined}
-                      placeholder="Мінімум 8 символів з великою літерою та цифрою"
-                    />
-                    {errors.password && (
-                      <motion.p
-                        className="p"
-                        style={{ color: 'var(--pink)', fontSize: 10, marginTop: 4 }}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                      >
-                        {errors.password}
-                      </motion.p>
-                    )}
+                    <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Пароль</label>
+                    <motion.input type="password" name="password" value={formData.password} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="Мін. 8 символів, 1 велика літера, 1 цифра" />
+                    {errors.password && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.password}</p>}
                   </div>
                 </div>
-
-                <motion.button
-                  type="submit"
-                  className="btn btn-green"
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                  disabled={isSubmitting}
-                  style={{
-                    width: '100%',
-                    marginTop: 24,
-                    padding: '14px',
-                    fontSize: 12,
-                    background: isSubmitting ? 'linear-gradient(180deg, #666, #444)' : 'linear-gradient(180deg, var(--green), var(--green-2))',
-                    borderColor: isSubmitting ? '#666' : 'var(--green)',
-                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: isSubmitting ? 0.6 : 1,
-                    position: 'relative',
-                    zIndex: 2
-                  }}
-                >
-                  {isSubmitting ? '🎮 Реєструємо...' : '🎮 Зареєструватися'}
+                {serverError && <p className="p" style={{ color: 'var(--accent-pink)', textAlign: 'center', marginTop: '12px', fontSize: '11px' }}>{serverError}</p>}
+                <motion.button type="submit" className="btn btn-green" disabled={isSubmitting} style={{ width: '100%', marginTop: '24px' }} >
+                  {isSubmitting ? 'Реєструємо...' : 'Зареєструватися'}
                 </motion.button>
               </form>
-
-              <motion.p
-                style={{
-                  textAlign: 'center',
-                  marginTop: 28, // Збільшено з 20 до 28 для більшого відступу від кнопки
-                  fontSize: 10,
-                  opacity: 0.8,
-                  color: 'var(--yellow)',
-                  position: 'relative',
-                  zIndex: 1
-                }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 0.8 }}
-              >
-                Вже маєте акаунт? <Link to="/login" style={{ color: 'var(--turquoise)', textDecoration: 'none' }}>Увійдіть</Link>
-              </motion.p>
-            </>
+              <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '11px', opacity: 0.8, color: 'var(--text-secondary)' }}>
+                Вже маєте акаунт? <Link to="/login" style={{ color: 'var(--accent-turquoise)' }}>Увійдіть</Link>
+              </p>
+            </motion.div>
           ) : (
             <motion.div
+              key="success"
               variants={successVariants}
               initial="hidden"
               animate="visible"
+              exit="hidden"
               className="center"
-              style={{ flexDirection: 'column', gap: 20, position: 'relative', zIndex: 1 }}
+              style={{ flexDirection: 'column', gap: '16px', textAlign: 'center' }}
             >
               <motion.div
-                className="mono"
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1.5, ease: "easeInOut" }}
                 style={{
-                  color: 'var(--green)',
-                  fontSize: 18,
-                  textShadow: '0 0 15px var(--green)',
-                  textAlign: 'center'
+                  width: '70px',
+                  height: '70px',
+                  borderRadius: '18px', // Замість '50%' для кола, робимо квадрат
+                  background: 'var(--accent-green)', // <-- ЗМІНЕНО
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 25px var(--shadow-btn-green), inset 0 0 10px rgba(255, 255, 255, 0.2)' // <-- ЗМІНЕНО
                 }}
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1 }}
               >
-                ✅ Успішно!
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <motion.path
+                        d="M5 13L9 17L19 7"
+                        stroke="var(--text-on-accent-light)" // <-- ЗМІНЕНО
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                    />
+                </svg>
               </motion.div>
-              <p className="p" style={{ opacity: 0.9, textAlign: 'center', fontSize: 11 }}>
-                Перенаправляємо на вхід...
-              </p>
+              <h2 className="h2 mono" style={{ color: 'var(--accent-green)', margin: 0, textShadow: '0 0 10px var(--accent-green)' }}>Реєстрація успішна!</h2>
+              <p className="p" style={{ margin: 0, opacity: 0.8, color: 'var(--text-secondary)' }}>Зараз ви будете перенаправлені на сторінку входу.</p>
             </motion.div>
           )}
         </AnimatePresence>

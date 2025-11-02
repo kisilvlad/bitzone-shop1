@@ -1,4 +1,4 @@
-// src/pages/Wishlist.js
+// src/pages/Wishlist.jsx (або src/Wishlist.js)
 
 import React, { useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -6,257 +6,268 @@ import { selectWishlistItems, removeFromWishlist, clearWishlist } from '../redux
 import formatPrice from '../utils/formatPrice';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import styled from 'styled-components';
+
+// --- СТИЛІЗОВАНІ КОМПОНЕНТИ (ОНОВЛЕНО) ---
+
+const WishlistGrid = styled(motion.div)`
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  @media (min-width: 360px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  @media (min-width: 820px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  @media (min-width: 1100px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+`;
+
+const WishlistCard = styled(motion.div)`
+  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--accent-pink); /* <-- ЗМІНЕНО: Було rgba(255,0,127,0.1) */
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+`;
+
+const CardLink = styled(Link)`
+  text-decoration: none;
+  color: inherit;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+`;
+
+const ImageContainer = styled.div`
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 1/1;
+  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  padding: 8px;
+`;
+
+const CardImage = styled(motion.img)`
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transition: transform 0.3s ease;
+  &:hover {
+    transform: scale(1.1);
+  }
+`;
+
+const CardTitle = styled.h3`
+  font-family: 'Source Code Pro', monospace;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 8px;
+  color: var(--accent-yellow); /* <-- ЗМІНЕНО */
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 34px;
+`;
+
+const CardPrice = styled.p`
+  font-family: 'Source Code Pro', monospace;
+  font-size: 13px;
+  text-align: center;
+  color: var(--accent-turquoise); /* <-- ЗМІНЕНО */
+  font-weight: 700;
+  margin-top: auto;
+  padding-top: 4px;
+`;
+
+const DeleteButton = styled(motion.button)`
+  width: 100%;
+  padding: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 8px;
+  background: rgba(255,0,127,0.1); // TODO: Замінити на змінну
+  border: 1px solid var(--accent-pink); /* <-- ЗМІНЕНО */
+  border-radius: 8px;
+  color: var(--accent-pink); /* <-- ЗМІНЕНО */
+  cursor: pointer;
+  transition: all 0.2s ease;
+  &:hover {
+    background: rgba(255,0,127,0.2); // TODO: Замінити на змінну
+    color: var(--text-primary); /* <-- ЗМІНЕНО */
+    box-shadow: 0 0 10px var(--shadow-btn-pink); /* <-- ЗМІНЕНО */
+  }
+`;
+// --- ГОЛОВНИЙ КОМПОНЕНТ ---
 
 export default function Wishlist() {
   const items = useSelector(selectWishlistItems);
   const dispatch = useDispatch();
-
   const hasItems = items.length > 0;
 
-  // Стабілізований handler для видалення
-  const handleRemove = useCallback((id, e) => {
-    e.stopPropagation();
+  const handleRemove = useCallback((id) => {
     if (window.confirm('Видалити товар з бажань?')) {
       dispatch(removeFromWishlist(id));
     }
   }, [dispatch]);
-
-  // Стабілізований handler для очищення
+  
   const handleClear = useCallback(() => {
     if (window.confirm('Очистити весь список бажань?')) {
       dispatch(clearWishlist());
     }
   }, [dispatch]);
-
-  // Анімації (аналогічно Cart: slide-in, hover glow)
+  
   const itemVariants = {
-    hidden: { opacity: 0, y: 20, scale: 0.95 },
-    visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: 'easeOut' } },
-    exit: { opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.2 } }
+    hidden: { opacity: 0, scale: 0.95 },
+    visible: { opacity: 1, scale: 1 },
+    exit: { opacity: 0, scale: 0.9 }
   };
-
   const stepVariants = {
     hidden: { opacity: 0, y: 30, scale: 0.95 },
     visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: 'easeOut' } },
     exit: { opacity: 0, y: -30, scale: 0.95, transition: { duration: 0.3 } }
   };
-
-  const buttonVariants = {
-    hover: { scale: 1.02, boxShadow: '0 0 20px currentColor', y: -2 },
-    tap: { scale: 0.98, y: 0 }
-  };
-
+  
+  // --- 1. ПОВЕРТАЄМО СТАРИЙ ДИЗАЙН ДЛЯ "ПОРОЖНЬОЇ" СТОРІНКИ (ОНОВЛЕНО) ---
   if (!hasItems) {
     return (
-      <section className="container">
-        <motion.div
-          variants={stepVariants}
-          initial="hidden"
-          animate="visible"
-          className="surface center"
-          style={{ 
-            padding: 48, 
-            minHeight: '50vh', 
-            borderRadius: 'var(--radius)', 
-            boxShadow: 'var(--shadow-card), 0 0 30px rgba(255,0,127,0.1)',
-            background: 'linear-gradient(180deg, rgba(26,26,26,0.8), rgba(12,12,12,0.8))',
-            position: 'relative',
-            overflow: 'hidden'
-          }}
-        >
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '100%', background: 'linear-gradient(45deg, rgba(255,0,127,0.05), rgba(255,215,0,0.05))', pointerEvents: 'none' }} />
-          <motion.div 
-            className="mono" 
-            style={{ color: 'var(--pink)', fontSize: 18, marginBottom: 16, textShadow: '0 0 10px var(--pink)', position: 'relative', zIndex: 1 }}
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-          >
-            Список бажань порожній 💔
-          </motion.div>
-          <p className="p" style={{ opacity: 0.8, marginBottom: 24, fontSize: 12, position: 'relative', zIndex: 1 }}>Додайте товари з каталогу, щоб створити свою мрію!</p>
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.4, duration: 0.3 }}
-          >
-            <Link to="/products" className="btn btn-wish" style={{ padding: '12px 24px', fontSize: 12, position: 'relative', zIndex: 1 }}>
-              ✨ Перейти до каталогу
-            </Link>
-          </motion.div>
-        </motion.div>
-      </section>
+        <section className="container">
+            <motion.div
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              className="surface center" // <-- ЗМІНЕНО
+              style={{
+                padding: '48px 24px', // Адаптивний падінг
+                minHeight: '50vh',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--shadow-card), 0 0 30px var(--shadow-btn-pink)', // <-- ЗМІНЕНО
+                background: 'var(--surface-gradient)', // <-- ЗМІНЕНО
+                position: 'relative',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                textAlign: 'center'
+              }}
+            >
+              <div 
+                style={{ 
+                  position: 'absolute', 
+                  top: 0, left: 0, right: 0, height: '100%', 
+                  background: 'linear-gradient(45deg, rgba(255,0,127,0.05), rgba(255,215,0,0.05))', 
+                  pointerEvents: 'none',
+                  '[data-theme="light"] &': {
+                    background: 'linear-gradient(45deg, rgba(255,0,127,0.08), rgba(255,215,0,0.08))',
+                  }
+                }} 
+              />
+              <motion.div
+                className="mono"
+                style={{ 
+                  fontFamily: "'Press Start 2P', cursive", 
+                  color: 'var(--accent-pink)', /* <-- ЗМІНЕНО */
+                  fontSize: 'clamp(1rem, 5vw, 1.2rem)', 
+                  marginBottom: 16, 
+                  textShadow: '0 0 10px var(--accent-pink)', /* <-- ЗМІНЕНО */
+                  position: 'relative', 
+                  zIndex: 1 
+                }}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                Список бажань порожній 💔
+              </motion.div>
+              <p className="p" style={{ opacity: 0.8, marginBottom: 24, fontSize: 12, position: 'relative', zIndex: 1, color: 'var(--text-secondary)' }}> {/* <-- ЗМІНЕНО */}
+                Додайте товари з каталогу, щоб створити свою мрію!
+              </p>
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.4, duration: 0.3 }}
+              >
+                <Link to="/products" className="btn btn-wish" style={{ padding: '12px 24px', fontSize: 12, position: 'relative', zIndex: 1 }}>
+                  ✨ Перейти до каталогу
+                </Link>
+              </motion.div>
+            </motion.div>
+          </section>
     );
   }
 
+  // --- 2. ЗАЛИШАЄМО НОВИЙ ДИЗАЙН ДЛЯ СТОРІНКИ З ТОВАРАМИ (ОНОВЛЕНО) ---
   return (
     <section className="container">
-      <motion.h1 
-        className="h1 retro" 
-        initial={{ opacity: 0, y: -10 }}
+      <motion.h1
+        className="h1 retro"
+        initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ 
-          marginBottom: 24, 
-          background: 'linear-gradient(45deg, var(--pink), var(--yellow))',
+        style={{
+          fontSize: 'clamp(1.2rem, 5vw, 1.75rem)',
+          marginBottom: 24,
+          background: 'linear-gradient(45deg, var(--accent-pink), var(--accent-yellow))', /* <-- ЗМІНЕНО */
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
-          textShadow: '0 0 20px rgba(255,0,127,0.5)',
-          textAlign: 'center',
-          position: 'relative'
+          textShadow: '0 0 20px var(--shadow-btn-pink)', /* <-- ЗМІНЕНО */
+          textAlign: 'center'
         }}
       >
-        💖 Список бажань ({items.length} товарів)
+        💖 Список бажань ({items.length})
       </motion.h1>
 
-      <motion.div
-        variants={stepVariants}
+      <WishlistGrid
+        variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
         initial="hidden"
         animate="visible"
-        exit="exit"
-        style={{ position: 'relative' }}
       >
-        <div className="grid grid-4" style={{ gap: 20 }}>
-          <AnimatePresence>
-            {items.map((item, idx) => (
-              <motion.div
-                key={item.id}
-                variants={itemVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                whileHover={{ y: -4, rotateY: 2, boxShadow: '0 8px 25px rgba(255,0,127,0.2)' }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                style={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  background: 'linear-gradient(180deg, rgba(26,26,26,0.95), rgba(12,12,12,0.95))',
-                  border: '1px solid rgba(255,0,127,0.2)',
-                  borderRadius: 'var(--radius)',
-                  boxShadow: 'var(--shadow-card), 0 0 10px rgba(255,0,127,0.05)',
-                  padding: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                  transition: 'all 0.3s ease',
-                  zIndex: 1
-                }}
+        <AnimatePresence>
+          {items.map((item) => (
+            <WishlistCard
+              key={item.id}
+              variants={itemVariants}
+              exit="exit"
+              layout
+            >
+              <CardLink to={`/product/${item.id}`}>
+                <ImageContainer>
+                  <CardImage src={item.image} alt={item.name} />
+                </ImageContainer>
+                <CardTitle>{item.name}</CardTitle>
+                <CardPrice>{formatPrice(Number(item.price) || 0)}</CardPrice>
+              </CardLink>
+              <DeleteButton
+                onClick={() => handleRemove(item.id)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                {/* Badge для низької ціни або ретро (якщо є) */}
-                {item.isRetro && (
-                  <motion.span 
-                    className="badge" 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    style={{ 
-                      background: 'linear-gradient(180deg, var(--pink), var(--pink-2))',
-                      color: 'var(--white)',
-                      fontSize: 9,
-                      padding: '4px 8px',
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      zIndex: 5
-                    }}
-                  >
-                    RETRO
-                  </motion.span>
-                )}
+                Видалити
+              </DeleteButton>
+            </WishlistCard>
+          ))}
+        </AnimatePresence>
+      </WishlistGrid>
 
-                {/* Link на деталь товару */}
-                <Link 
-                  to={`/product/${item.id}`}
-                  style={{ 
-                    textDecoration: 'none', 
-                    color: 'inherit', 
-                    display: 'block', 
-                    flex: 1,
-                    pointerEvents: 'auto'
-                  }}
-                >
-                  <div 
-                    style={{ 
-                      borderRadius: 12, 
-                      overflow: 'hidden', 
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                      background: 'linear-gradient(45deg, rgba(255,0,127,0.1), rgba(255,215,0,0.1))',
-                      aspectRatio: '1/1',
-                      transition: 'transform 0.3s ease',
-                      position: 'relative'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  >
-                    <img 
-                      src={item.image} 
-                      alt={item.name} 
-                      style={{ 
-                        width: '100%', 
-                        height: '100%', 
-                        objectFit: 'contain', 
-                        imageRendering: 'pixelated',
-                        transition: 'transform 0.3s ease'
-                      }} 
-                    />
-                  </div>
-                  <motion.h3 className="h2 mono" style={{ fontSize: 12, margin: '8px 0 0 0', color: 'var(--yellow)', textShadow: '0 0 6px var(--yellow)', textAlign: 'center' }} whileHover={{ color: 'var(--turquoise)' }}>
-                    {item.name}
-                  </motion.h3>
-                  <motion.div className="p" style={{ opacity: 0.9, fontSize: 11, textAlign: 'center', color: 'var(--turquoise)', fontWeight: 'bold', textShadow: '0 0 4px var(--turquoise)' }} whileHover={{ scale: 1.02 }}>
-                    {formatPrice(Number(item.price) || 0)}
-                  </motion.div>
-                </Link>
-
-                {/* Кнопка видалення */}
-                <motion.button 
-                  className="btn btn-outline" 
-                  onClick={(e) => handleRemove(item.id, e)}
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                  style={{ 
-                    width: '100%', 
-                    padding: '8px 12px', 
-                    fontSize: 10, 
-                    background: 'rgba(255,0,127,0.1)', 
-                    border: '1px solid var(--pink)',
-                    borderRadius: '999px',
-                    color: 'var(--pink)',
-                    boxShadow: '0 2px 8px rgba(255,0,127,0.3)',
-                    fontWeight: 'bold',
-                    transition: 'all 0.3s ease',
-                    zIndex: 10,
-                    pointerEvents: 'auto'
-                  }}
-                >
-                  ❤️ Видалити з бажань
-                </motion.button>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-        <motion.button
-          className="btn btn-wish"
-          onClick={handleClear}
-          variants={buttonVariants}
-          whileHover="hover"
-          whileTap="tap"
-          style={{ 
-            width: '100%', 
-            marginTop: 24, 
-            padding: '12px', 
-            fontSize: 12, 
-            background: 'linear-gradient(180deg, var(--pink), var(--pink-2))',
-            border: 'none',
-            boxShadow: '0 4px 12px rgba(255,0,127,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
-            color: 'var(--white)',
-            fontWeight: 'bold',
-            borderRadius: '999px',
-            zIndex: 10
-          }}
-        >
-          🗑️ Очистити список бажань
-        </motion.button>
-      </motion.div>
+      <motion.button
+        className="btn btn-outline" // Використовує глобальний стиль .btn-outline
+        onClick={handleClear}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        style={{
+          width: '100%',
+          maxWidth: '300px',
+          margin: '32px auto 0',
+          display: 'block'
+        }}
+      >
+        🗑️ Очистити все
+      </motion.button>
     </section>
   );
 }
