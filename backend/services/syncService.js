@@ -1,4 +1,6 @@
 // backend/services/syncService.js
+// !!! ФІКС: Змінено розклад cron та прибрано миттєвий запуск !!!
+
 const mongoose = require('mongoose');
 const axios = require('axios');
 const sharp = require('sharp');
@@ -56,7 +58,6 @@ const syncProducts = async () => {
     }
     console.log(`✅ Отримано ${allProducts.length} товарів з ROAPP.`);
     if (allProducts.length === 0) return;
-
     const bulkOps = await Promise.all(
       allProducts.map(async (p) => {
         const imageUrl = p.images.length > 0 ? p.images[0].image : null;
@@ -82,11 +83,8 @@ const syncProducts = async () => {
           stock: p.is_serial && p.sernum_codes ? p.sernum_codes.length : p.is_serial ? 0 : 1,
           createdAtRoapp: p.created_at,
           lqip,
-          // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ТУТ !!!
-          // Перетворюємо об'єкт custom_fields на масив значень
           specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
-        
         return {
           updateOne: {
             filter: { roappId: p.id },
@@ -101,7 +99,6 @@ const syncProducts = async () => {
     console.log('✅ Синхронізацію товарів завершено!');
     console.log(`   - Створено нових: ${result.upsertedCount}`);
     console.log(`   - Оновлено існуючих: ${result.modifiedCount}`);
-
   } catch (error) {
     console.error('❌ Помилка під час повної синхронізації товарів:', error.message, error.stack);
   }
@@ -112,9 +109,10 @@ const runSync = async () => {
     await syncProducts();
 }
 
-runSync();
+// runSync(); // <-- !!! ФІКС №1: Ми КОМЕНТУЄМО цей рядок, щоб сервер стартував миттєво.
 
-cron.schedule('*/15 * * * *', () => {
-  console.log('⏰ Запуск планової синхронізації...');
+// !!! ФІКС №2: Ми змінюємо розклад на "раз на добу о 3:00 ночі"
+cron.schedule('0 3 * * *', () => {
+  console.log('⏰ Запуск планової ДОБОВОЇ синхронізації...');
   runSync();
 });
