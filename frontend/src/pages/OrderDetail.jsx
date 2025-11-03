@@ -1,4 +1,5 @@
 // src/pages/OrderDetail.jsx
+// !!! ОНОВЛЕНО URL-адреси для деплою !!!
 
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -27,8 +28,10 @@ export default function OrderDetail() {
                 const config = {
                      headers: { Authorization: `Bearer ${token}` }
                 };
-                // --- ЦЕЙ URL ВЖЕ ПРАВИЛЬНИЙ ---
-                const { data } = await axios.get(`http://localhost:5000/api/orders/${orderId}`, config);
+                
+                // !!! ВИПРАВЛЕННЯ URL ТУТ !!!
+                const { data } = await axios.get(`https://bitzone-shop1.onrender.com/api/orders/${orderId}`, config);
+                
                 setOrder(data);
             } catch (err) {
                 setError('Не вдалося завантажити деталі замовлення. Можливо, у вас немає доступу.');

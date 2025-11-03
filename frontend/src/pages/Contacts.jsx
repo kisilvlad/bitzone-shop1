@@ -55,9 +55,9 @@ export default function Contacts() {
           <h3 className="h2 mono" style={{ color: 'var(--accent-yellow)', margin: '0 0 8px 0' }}> {/* <-- ЗМІНЕНО */}
             Як з нами зв'язатись?
           </h3>
-          <p className="p">Телефон: <a href="tel:+380991234567">+38 (099) 123-45-67</a></p>
+          <p className="p">Телефон: <a href="tel:+380505812852">+38 (050) 581-28-52</a></p>
           <p className="p">Email: <a href="mailto:support@bitzone.com">support@bitzone.com</a></p>
-          <p className="p">Telegram: <a href="https://t.me/bitzone_support" target="_blank" rel="noopener noreferrer">@bitzone_support</a></p>
+          <p className="p">Telegram: <a href="https://t.me/BITZone_Shop" target="_blank" rel="noopener noreferrer">@bitzone_support</a></p>
         </InfoBlock>
 
         <InfoBlock style={{ borderTop: '1px solid var(--border-primary)', paddingTop: '24px' }}> {/* <-- ЗМІНЕНО */}
@@ -67,8 +67,7 @@ export default function Contacts() {
           </h3>
           <p className="p">Прийом замовлень на сайті: <strong>Цілодобово</strong></p>
           <p className="p">Консультації та підтримка:</p>
-          <p className="p"><strong>Пн-Пт:</strong> 10:00 - 19:00</p>
-          <p className="p"><strong>Сб-Нд:</strong> 11:00 - 17:00</p>
+          <p className="p"><strong>Пн-Нд:</strong> 10:00 - 21:00</p>
         </InfoBlock>
       </InfoGrid>
     </ContactWrapper>

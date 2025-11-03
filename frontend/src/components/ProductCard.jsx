@@ -1,5 +1,5 @@
 // src/components/ProductCard.jsx
-// !!! ФІНАЛЬНА ВЕРСІЯ З УСІМА ВИПРАВЛЕННЯМИ !!!
+// !!! ОНОВЛЕНО URL-адреси для деплою !!!
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -174,7 +174,9 @@ const NotifyModal = ({ product, onClose }) => {
     try {
       const cleaned = phone.replace(/\D/g, '');
       const normalizedPhone = cleaned.startsWith('0') ? `38${cleaned}` : cleaned;
-      await axios.post('http://localhost:5000/api/orders/notify-me', {
+      
+      // !!! ВИПРАВЛЕННЯ URL !!!
+      await axios.post('https://bitzone-shop1.onrender.com/api/orders/notify-me', {
         productId: product._id,
         productName: product.name,
         phone: normalizedPhone
@@ -204,16 +206,16 @@ const NotifyModal = ({ product, onClose }) => {
         className="surface"
         style={{
           padding: 22, width: 'min(420px, 92vw)', borderRadius: 'var(--radius)',
-          border: '1px solid var(--border-primary)', // <-- ЗМІНЕНО
-          boxShadow: 'var(--shadow-card-hover)', // <-- ЗМІНЕНО
-          background: 'var(--surface-gradient)', // <-- ЗМІНЕНО
+          border: '1px solid var(--border-primary)', 
+          boxShadow: 'var(--shadow-card-hover)', 
+          background: 'var(--surface-gradient)', 
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {status === 'success' ? (
           <>
-            <h3 className="h2 mono" style={{ color: 'var(--text-primary)', margin: 0 }}>Дякуємо!</h3> {/* <-- ЗМІНЕНО */}
-            <p className="p" style={{ marginTop: 10, color: 'var(--text-secondary)' }}> {/* <-- ЗМІНЕНО */}
+            <h3 className="h2 mono" style={{ color: 'var(--text-primary)', margin: 0 }}>Дякуємо!</h3> 
+            <p className="p" style={{ marginTop: 10, color: 'var(--text-secondary)' }}> 
               Повідомимо за номером <strong>{phone}</strong>, коли товар зʼявиться.
             </p>
             <button className="btn btn-green" style={{ marginTop: 18 }} onClick={onClose}>
@@ -222,8 +224,8 @@ const NotifyModal = ({ product, onClose }) => {
           </>
         ) : (
           <>
-            <h3 className="h2 mono" style={{ color: 'var(--text-primary)', margin: 0 }}>Хочу цей товар</h3> {/* <-- ЗМІНЕНО */}
-            <p className="p" style={{ marginTop: 10, color: 'var(--text-secondary)' }}> {/* <-- ЗМІНЕНО */}
+            <h3 className="h2 mono" style={{ color: 'var(--text-primary)', margin: 0 }}>Хочу цей товар</h3> 
+            <p className="p" style={{ marginTop: 10, color: 'var(--text-secondary)' }}> 
               Вкажіть телефон — надішлемо сповіщення, як тільки буде в наявності.
             </p>
             <form onSubmit={handleSubmit} style={{ marginTop: 18 }}>
@@ -236,7 +238,7 @@ const NotifyModal = ({ product, onClose }) => {
                 required
               />
               {status === 'error' && (
-                <p style={{ color: 'var(--accent-pink)', fontSize: 10, marginTop: 6 }}> {/* <-- ЗМІНЕНО */}
+                <p style={{ color: 'var(--accent-pink)', fontSize: 10, marginTop: 6 }}> 
                   Сталася помилка. Спробуйте пізніше.
                 </p>
               )}
@@ -285,7 +287,8 @@ const ProductCard = React.memo(({ product, variant = 'grid', compact = false }) 
   
   const getOptimizedImageUrl = (originalUrl, width = 800, quality = 82) => {
     if (!originalUrl) return '/assets/bitzone-logo1.png';
-    return `http://localhost:5000/api/images?url=${encodeURIComponent(originalUrl)}&w=${width}&q=${quality}`;
+    // !!! ВИПРАВЛЕННЯ URL !!!
+    return `https://bitzone-shop1.onrender.com/api/images?url=${encodeURIComponent(originalUrl)}&w=${width}&q=${quality}`;
   };
 
   const imgSrc = getOptimizedImageUrl(

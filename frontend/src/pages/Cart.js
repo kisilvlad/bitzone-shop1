@@ -1,4 +1,6 @@
 // src/pages/Cart.js
+// !!! ОНОВЛЕНО URL-адреси для деплою !!!
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -145,7 +147,9 @@ export default function Cart() {
       try {
         const config = { headers: {} };
         if (token) config.headers.Authorization = `Bearer ${token}`;
-        await axios.post('http://localhost:5000/api/orders', orderPayload, config);
+        
+        // !!! ВИПРАВЛЕННЯ URL !!!
+        await axios.post('https://bitzone-shop1.onrender.com/api/orders', orderPayload, config);
 
         setCheckoutStep('success');
         dispatch(clearCart());
