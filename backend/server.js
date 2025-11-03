@@ -1,5 +1,5 @@
 // backend/server.js
-// !!! ФІКС: Додано правильні налаштування CORS для твого домену !!!
+// !!! ФІНАЛЬНА ВЕРСІЯ З CORS ДЛЯ 'bitzone.com.ua' !!!
 
 const express = require('express');
 const cors = require('cors');
@@ -10,6 +10,7 @@ const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
 
 // Ініціалізація
+// Запускаємо dotenv ТІЛЬКИ в розробці (development)
 if (process.env.NODE_ENV !== 'production') {
   console.log('Running in development mode, loading .env file...');
   dotenv.config();
@@ -25,22 +26,21 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // --- !!! ГОЛОВНЕ ВИПРАВЛЕННЯ ТУТ: НАЛАШТУВАННЯ CORS !!! ---
-// Вкажи URL твого фронтенду (з Hostinger)
+// Вказуємо твій домен на Hostinger
 const allowedOrigins = [
-    'https://bitzone.com.ua', // <-- !!! ЗАМІНИ ЦЕ НА СВІЙ ДОМЕН (наприклад, https://bitzone.shop) !!!
-    'https://www.bitzone.com.ua' // <-- Додай також версію з www
+    'https://bitzone.com.ua',
+    'https://www.bitzone.com.ua'
 ];
 
 const corsOptions = {
     origin: function (origin, callback) {
-        // Дозволяємо запити без origin (наприклад, Postman або мобільні додатки)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        // Дозволяємо запити без origin (наприклад, Postman) АБО якщо origin є в списку
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            const msg = 'CORS policy: Access not allowed from this Origin.';
             return callback(new Error(msg), false);
         }
-        return callback(null, true);
     },
     credentials: true, // Дозволяємо передавати токени
     optionsSuccessStatus: 200 
@@ -53,7 +53,7 @@ app.use(express.json());
 // Rate Limiter
 const authLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
-	max: 10,
+	max: 10, // Дозволяє 10 спроб на 15 хв
 	standardHeaders: true,
 	legacyHeaders: false,
     message: { message: 'Забагато спроб входу з цієї IP-адреси, будь ласка, спробуйте знову через 15 хвилин' }
