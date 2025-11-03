@@ -1,5 +1,5 @@
 // backend/server.js
-// !!! ФІНАЛЬНА ВЕРСІЯ З CORS ДЛЯ 'bitzone.com.ua' !!!
+// !!! ФІКС: Додано http:// ТА https:// в CORS !!!
 
 const express = require('express');
 const cors = require('cors');
@@ -10,7 +10,6 @@ const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
 
 // Ініціалізація
-// Запускаємо dotenv ТІЛЬКИ в розробці (development)
 if (process.env.NODE_ENV !== 'production') {
   console.log('Running in development mode, loading .env file...');
   dotenv.config();
@@ -26,18 +25,22 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // --- !!! ГОЛОВНЕ ВИПРАВЛЕННЯ ТУТ: НАЛАШТУВАННЯ CORS !!! ---
-// Вказуємо твій домен на Hostinger
+// Додаємо ВСІ версії твого домену
 const allowedOrigins = [
     'https://bitzone.com.ua',
-    'https://www.bitzone.com.ua'
+    'https://www.bitzone.com.ua',
+    'http://bitzone.com.ua',
+    'http://www.bitzone.com.ua'
 ];
 
 const corsOptions = {
     origin: function (origin, callback) {
-        // Дозволяємо запити без origin (наприклад, Postman) АБО якщо origin є в списку
+        // Дозволяємо запити без origin (Postman) АБО якщо origin є в списку
         if (!origin || allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
+            // Якщо домен не в списку, логуємо його і відхиляємо
+            console.error(`CORS Error: Origin not allowed: ${origin}`);
             const msg = 'CORS policy: Access not allowed from this Origin.';
             return callback(new Error(msg), false);
         }
@@ -53,7 +56,7 @@ app.use(express.json());
 // Rate Limiter
 const authLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
-	max: 10, // Дозволяє 10 спроб на 15 хв
+	max: 10,
 	standardHeaders: true,
 	legacyHeaders: false,
     message: { message: 'Забагато спроб входу з цієї IP-адреси, будь ласка, спробуйте знову через 15 хвилин' }
