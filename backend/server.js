@@ -1,29 +1,54 @@
 // backend/server.js
+// !!! ФІКС: Додано правильні налаштування CORS для твого домену !!!
 
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const helmet = require('helmet');
-const connectDB = require('./config/db'); // Імпортуємо функцію підключення до БД
+const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
 
 // Ініціалізація
-dotenv.config();
+if (process.env.NODE_ENV !== 'production') {
+  console.log('Running in development mode, loading .env file...');
+  dotenv.config();
+}
 
 // --- ПІДКЛЮЧЕННЯ ДО БАЗИ ДАНИХ ---
-connectDB(); // Викликаємо функцію підключення
+connectDB();
 
 // --- ЗАПУСК ФОНОВОЇ СИНХРОНІЗАЦІЇ ---
-require('./services/syncService'); // Запускаємо наш сервіс
+require('./services/syncService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware (проміжні обробники)
+// --- !!! ГОЛОВНЕ ВИПРАВЛЕННЯ ТУТ: НАЛАШТУВАННЯ CORS !!! ---
+// Вкажи URL твого фронтенду (з Hostinger)
+const allowedOrigins = [
+    'https://bitzone.com.ua', // <-- !!! ЗАМІНИ ЦЕ НА СВІЙ ДОМЕН (наприклад, https://bitzone.shop) !!!
+    'https://www.bitzone.com.ua' // <-- Додай також версію з www
+];
+
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Дозволяємо запити без origin (наприклад, Postman або мобільні додатки)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true, // Дозволяємо передавати токени
+    optionsSuccessStatus: 200 
+};
+
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors());
-app.use(express.json()); // Для парсингу JSON-тіл запитів
+app.use(cors(corsOptions)); // <-- Використовуємо нові налаштування
+app.use(express.json()); 
 
 // Rate Limiter
 const authLimiter = rateLimit({
@@ -40,12 +65,12 @@ app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/images', require('./routes/imageRoutes'));
-app.use('/api/webhooks', require('./routes/webhookRoutes')); // <-- ДОДАНО ЦЕЙ РЯДОК
+app.use('/api/webhooks', require('./routes/webhookRoutes'));
 
 // --- ЦЕНТРАЛІЗОВАНИЙ ОБРОБНИК ПОМИЛОК ---
 app.use(errorHandler);
 
 // Запуск сервера
 app.listen(PORT, () => {
-    console.log(`🚀 Сервер успішно запущено на порту http://localhost:${PORT}`);
+    console.log(`🚀 Сервер успішно запущено на порту ${PORT}`);
 });
