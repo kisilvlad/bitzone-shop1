@@ -12,7 +12,7 @@ let redisClient;
 
 // Upstash використовує 'rediss://' (з 's'), що вимагає 'tls'
 if (process.env.REDIS_URL) {
-    const redisURL = process.env.UPSTASH_REDIS_URL;
+    const redisURL = process.env.REDIS_URL;
     
     redisClient = redis.createClient({
         url: redisURL,
