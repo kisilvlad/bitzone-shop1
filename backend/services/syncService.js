@@ -84,8 +84,6 @@ const syncProducts = async () => {
           stock: p.is_serial && p.sernum_codes ? p.sernum_codes.length : p.is_serial ? 0 : 1,
           createdAtRoapp: p.created_at,
           lqip,
-          // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ТУТ !!!
-          // Перетворюємо об'єкт custom_fields на масив значень
           specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
         
