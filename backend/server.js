@@ -10,6 +10,7 @@ const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
 
 // Ініціалізація
+// !!! ФІКС: Запускаємо dotenv ТІЛЬКИ в розробці (development) !!!
 if (process.env.NODE_ENV !== 'production') {
   console.log('Running in development mode, loading .env file...');
   dotenv.config();
@@ -24,9 +25,9 @@ require('./services/syncService');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- !!! ВИДАЛЕНО 'corsOptions' - Nginx буде цим займатись !!! ---
+// --- !!! СПРОЩЕНИЙ CORS ДЛЯ VPS !!! ---
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors()); // <-- Простий cors()
+app.use(cors()); // <-- Nginx буде нашим "фільтром", тому тут дозволяємо все.
 app.use(express.json()); 
 
 // Rate Limiter
