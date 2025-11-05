@@ -1,43 +1,28 @@
 // backend/controllers/imageController.js
-// !!! ФІКС: ПІДКЛЮЧЕННЯ ДО REDIS ЧЕРЕЗ process.env.REDIS_URL !!!
+// !!! ФІКС: Повернуто до локального 'redis.createClient()' для VPS !!!
 
 const axios = require('axios');
 const sharp = require('sharp');
 const asyncHandler = require('express-async-handler');
 const redis = require('redis');
 
-// --- !!! ОСЬ ГОЛОВНЕ ВИПРАВЛЕННЯ !!! ---
-// Ми створюємо клієнт, лише якщо REDIS_URL вказано
-let redisClient;
+// --- !!! ОСЬ ГОЛОВНЕ ВИПРАВЛЕННЯ (ПОВЕРНЕННЯ ДО СТАРОЇ ВЕРСІЇ) !!! ---
+// createClient() без параметрів автоматично підключиться до localhost:6379
+const redisClient = redis.createClient(); 
 
-// Upstash використовує 'rediss://' (з 's'), що вимагає 'tls'
-if (process.env.UPSTASH_REDIS_URL) {
-    const redisURL = process.env.UPSTASH_REDIS_URL;
-    
-    redisClient = redis.createClient({
-        url: redisURL,
-        // Додаємо цей об'єкт, якщо URL починається з rediss://
-        socket: redisURL.startsWith('rediss://') ? { tls: true, rejectUnauthorized: false } : undefined
-    });
+redisClient.on('error', (err) => console.log('Redis Client Error', err));
 
-    redisClient.on('error', (err) => console.log('Redis Client Error', err));
-    
-    (async () => {
-        if (!redisClient.isOpen) {
-            try {
-                await redisClient.connect();
-                console.log('✅ Redis (Upstash) успішно підключено!');
-            } catch (err) {
-                console.error('❌ Не вдалося підключитися до Redis (Upstash):', err);
-            }
+(async () => {
+    if (!redisClient.isOpen) {
+        try {
+            await redisClient.connect();
+            console.log('✅ Redis (Локальний) успішно підключено!');
+        } catch (err) {
+            console.error('❌ Не вдалося підключитися до локального Redis:', err.message);
+            console.warn('!!! Кешування зображень вимкнено. !!!');
         }
-    })();
-} else {
-    console.warn("****************************************************************");
-    console.warn("!!! УВАГА: REDIS_URL не налаштовано в .env !!!");
-    console.warn("!!! Кешування зображень вимкнено. Додаток працюватиме повільніше. !!!");
-    console.warn("****************************************************************");
-}
+    }
+})();
 // --- КІНЕЦЬ ВИПРАВЛЕННЯ ---
 
 const IMAGE_CACHE_EXPIRATION = 3600; // Час життя кешу (1 година)

@@ -1,5 +1,5 @@
 // backend/server.js
-// !!! ФІКС: Додано http:// ТА https:// в CORS !!!
+// !!! ФІНАЛЬНА ВЕРСІЯ ДЛЯ VPS: Прибрано allowedOrigins (це зробить Nginx) !!!
 
 const express = require('express');
 const cors = require('cors');
@@ -24,41 +24,17 @@ require('./services/syncService');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- !!! ГОЛОВНЕ ВИПРАВЛЕННЯ ТУТ: НАЛАШТУВАННЯ CORS !!! ---
-// Додаємо ВСІ версії твого домену
-const allowedOrigins = [
-    'https://bitzone.com.ua',
-    'https://www.bitzone.com.ua',
-    'http://bitzone.com.ua',
-    'http://www.bitzone.com.ua'
-];
-
-const corsOptions = {
-    origin: function (origin, callback) {
-        // Дозволяємо запити без origin (Postman) АБО якщо origin є в списку
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            // Якщо домен не в списку, логуємо його і відхиляємо
-            console.error(`CORS Error: Origin not allowed: ${origin}`);
-            const msg = 'CORS policy: Access not allowed from this Origin.';
-            return callback(new Error(msg), false);
-        }
-    },
-    credentials: true, // Дозволяємо передавати токени
-    optionsSuccessStatus: 200 
-};
-
+// --- !!! ВИДАЛЕНО 'corsOptions' - Nginx буде цим займатись !!! ---
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors(corsOptions)); // <-- Використовуємо нові налаштування
+app.use(cors()); // <-- Простий cors()
 app.use(express.json()); 
 
 // Rate Limiter
 const authLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: 10,
-	standardHeaders: true,
-	legacyHeaders: false,
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
     message: { message: 'Забагато спроб входу з цієї IP-адреси, будь ласка, спробуйте знову через 15 хвилин' }
 });
 
