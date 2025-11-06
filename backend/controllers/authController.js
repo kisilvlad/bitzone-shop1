@@ -1,6 +1,6 @@
 // backend/controllers/authController.js
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // Використовуємо вашу модель User.js
+const User = require('../models/User'); 
 const axios = require('axios');
 
 // Функція для генерації токена
@@ -21,7 +21,6 @@ const sendTokenResponse = (user, statusCode, res) => {
 
     if (process.env.NODE_ENV === 'production') {
         options.secure = true;
-        // options.sameSite = 'none'; // Потрібно, якщо frontend і backend на різних доменах
     }
 
     res.status(statusCode)
@@ -29,7 +28,7 @@ const sendTokenResponse = (user, statusCode, res) => {
        .json({
            success: true,
            token,
-           user: { // Повертаємо дані користувача
+           user: { 
                _id: user._id,
                name: user.name,
                email: user.email,
@@ -51,7 +50,7 @@ const createRoappLead = async (name, email, password) => {
         },
         custom_fields: [
             {
-                id: process.env.PASSWORD_CUSTOM_FIELD_ID, // <--- ОСЬ ТУТ ВИПРАВЛЕНО
+                id: process.env.PASSWORD_CUSTOM_FIELD_ID, // <--- ВИПРАВЛЕНО (було ENY)
                 value: password
             }
         ]
@@ -99,7 +98,7 @@ const registerUser = async (req, res, next) => {
 
             // 5. Якщо Лід створений, оновлюємо нашого юзера
             if (roappLead && roappLead.id) {
-                user.roappId = roappLead.id;
+                user.roappId = roappLead.id.toString(); // <--- ВИПРАВЛЕНО (тепер поле існує)
                 await user.save();
             }
 
@@ -121,21 +120,18 @@ const loginUser = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        // 1. Перевірка email та пароля
         if (!email || !password) {
             res.status(400);
             throw new Error('Будь ласка, введіть email та пароль');
         }
 
-        // 2. Пошук користувача
         const user = await User.findOne({ email }).select('+password');
 
         if (!user) {
-            res.status(401); // 401 (Unauthorized) - більш коректно для логіна
+            res.status(401); 
             throw new Error('Невірний email або пароль');
         }
 
-        // 3. Перевірка пароля
         const isMatch = await user.matchPassword(password);
 
         if (!isMatch) {
@@ -143,7 +139,6 @@ const loginUser = async (req, res, next) => {
             throw new Error('Невірний email або пароль');
         }
 
-        // 4. Відправка токена
         sendTokenResponse(user, 200, res);
 
     } catch (error) {
@@ -157,7 +152,7 @@ const loginUser = async (req, res, next) => {
 const logoutUser = async (req, res, next) => {
     try {
         res.cookie('token', 'none', {
-            expires: new Date(Date.now() + 10 * 1000), // 10 секунд
+            expires: new Date(Date.now() + 10 * 1000), 
             httpOnly: true,
         });
 
@@ -175,7 +170,6 @@ const logoutUser = async (req, res, next) => {
 // @access  Private
 const getMe = async (req, res, next) => {
     try {
-        // req.user встановлюється в middleware/authMiddleware.js
         const user = await User.findById(req.user.id);
         
         res.status(200).json({
@@ -191,7 +185,6 @@ const getMe = async (req, res, next) => {
         next(error);
     }
 };
-
 
 module.exports = {
     registerUser,
