@@ -51,7 +51,7 @@ const createRoappLead = async (name, email, password) => {
         },
         custom_fields: [
             {
-                id: process.env.PASSWORD_CUSTOM_FIELD_ID, // <--- ВИПРАВЛЕНО
+                id: process.env.PASSWORD_CUSTOM_FIELD_ID, // <--- ОСЬ ТУТ ВИПРАВЛЕНО
                 value: password
             }
         ]
