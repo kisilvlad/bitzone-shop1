@@ -1,73 +1,148 @@
 // backend/controllers/authController.js
+const User = require('../models/User');
+const asyncHandler = require('express-async-handler'); // === ДОДАНО ===
 
-const axios = require('axios');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const asyncHandler = require('express-async-handler'); // Імпортуємо asyncHandler
+// === ЛОГІКУ ГЕНЕРАЦІЇ ТОКЕНА ВИДАЛЕНО ЗВІДСИ ===
 
-const roappApi = axios.create({
-    baseURL: 'https://api.roapp.io/',
-    headers: {
-        'accept': 'application/json',
-        'authorization': `Bearer ${process.env.ROAPP_API_KEY}`
+// Функція для відправки відповіді з токеном
+const sendTokenResponse = (user, statusCode, res) => {
+    // === ВИКОРИСТОВУЄМО НОВИЙ МЕТОД З МОДЕЛІ ===
+    const token = user.getSignedJwtToken(); 
+
+    const options = {
+        expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 днів
+        httpOnly: true,
+    };
+
+    if (process.env.NODE_ENV === 'production') {
+        options.secure = true;
+        // Примітка: 'sameSite: none' вимагає 'secure: true'. 
+        // Якщо у вас frontend і backend на різних доменах, це може знадобитись.
+        // options.sameSite = 'none'; 
     }
-});
+
+    res.status(statusCode)
+       .cookie('token', token, options)
+       .json({
+           success: true,
+           token,
+           user: { // Повертаємо дані користувача
+               _id: user._id,
+               name: user.name,
+               email: user.email,
+               isAdmin: user.isAdmin,
+           }
+       });
+};
 
 // @desc    Реєстрація нового користувача
 // @route   POST /api/auth/register
-const registerUser = asyncHandler(async (req, res) => {
-    const { firstName, lastName, phone, password } = req.body; 
-    
-    const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': phone } });
-    if (searchResponse.data.data.length > 0) {
-        res.status(409); // Conflict
-        throw new Error('Користувач з таким номером телефону вже існує.');
+// @access  Public
+// === ОБГОРНУТО В ASYNCHANDLER, ПРИБРАНО TRY...CATCH ===
+const registerUser = asyncHandler(async (req, res, next) => {
+    const { name, email, password } = req.body;
+
+    // Перевірка, чи користувач вже існує
+    const userExists = await User.findOne({ email });
+
+    if (userExists) {
+        res.status(400);
+        throw new Error('Користувач з таким email вже існує');
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // Створення нового користувача
+    const user = await User.create({
+        name,
+        email,
+        password,
+    });
 
-    const newCustomerPayload = {
-        first_name: firstName,
-        last_name: lastName,
-        phones: [{"title": "Основний", "phone": phone, "notify": false, "has_viber": false, "has_whatsapp": false}],
-        custom_fields: { [process.env.PASSWORD_CUSTOM_FIELD_ID]: hashedPassword }
-    };
-
-    await roappApi.post('contacts/people', newCustomerPayload);
-    res.status(201).json({ success: true, message: 'Реєстрація успішна!' });
+    // Відправка токена
+    if (user) {
+        sendTokenResponse(user, 201, res);
+    } else {
+        res.status(400);
+        throw new Error('Невірні дані користувача');
+    }
 });
 
-// @desc    Автентифікація користувача та отримання токену
+// @desc    Автентифікація користувача (Логін)
 // @route   POST /api/auth/login
-const loginUser = asyncHandler(async (req, res) => {
-    const { phone, password } = req.body;
+// @access  Public
+// === ОБГОРНУТО В ASYNCHANDLER, ПРИБРАНО TRY...CATCH ===
+const loginUser = asyncHandler(async (req, res, next) => {
+    const { email, password } = req.body;
 
-    const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': phone } });
-    if (searchResponse.data.data.length === 0) {
-        res.status(401); // Unauthorized
-        throw new Error('Неправильний телефон або пароль.');
+    // Перевірка email та пароля
+    if (!email || !password) {
+        res.status(400);
+        throw new Error('Будь ласка, введіть email та пароль');
     }
 
-    const user = searchResponse.data.data[0];
-    const storedHash = user.custom_fields[process.env.PASSWORD_CUSTOM_FIELD_ID];
-    if (!storedHash) {
+    // Пошук користувача + витягуємо пароль
+    const user = await User.findOne({ email }).select('+password');
+
+    if (!user) {
         res.status(401);
-        throw new Error('Для цього користувача не встановлено пароль.');
+        throw new Error('Невірний email або пароль');
     }
 
-    const isMatch = await bcrypt.compare(password, storedHash);
+    // Перевірка пароля
+    const isMatch = await user.matchPassword(password);
+
     if (!isMatch) {
         res.status(401);
-        throw new Error('Неправильний телефон або пароль.');
+        throw new Error('Невірний email або пароль');
     }
 
-    const payload = { id: user.id, name: user.first_name };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
-    res.json({ success: true, token, user: { name: user.first_name, phone: phone } });
+    // Відправка токена
+    sendTokenResponse(user, 200, res);
 });
 
-module.exports = { 
-    registerUser, 
-    loginUser 
+// @desc    Вихід користувача (Logout)
+// @route   GET /api/auth/logout
+// @access  Private
+// === ОБГОРНУТО В ASYNCHANDLER, ПРИБРАНО TRY...CATCH ===
+const logoutUser = asyncHandler(async (req, res, next) => {
+    res.cookie('token', 'none', {
+        expires: new Date(Date.now() + 10 * 1000), // 10 секунд
+        httpOnly: true,
+    });
+
+    res.status(200).json({
+        success: true,
+        data: {},
+    });
+});
+
+// @desc    Отримати поточного користувача
+// @route   GET /api/auth/me
+// @access  Private
+// === ОБГОРНУТО В ASYNCHANDLER, ПРИБРАНО TRY...CATCH ===
+const getMe = asyncHandler(async (req, res, next) => {
+    // req.user встановлюється в middleware/authMiddleware.js
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+        res.status(404);
+        throw new Error('Користувача не знайдено');
+    }
+
+    res.status(200).json({
+        success: true,
+        user: {
+           _id: user._id,
+           name: user.name,
+           email: user.email,
+           isAdmin: user.isAdmin,
+        }
+    });
+});
+
+
+module.exports = {
+    registerUser,
+    loginUser,
+    logoutUser,
+    getMe
 };
