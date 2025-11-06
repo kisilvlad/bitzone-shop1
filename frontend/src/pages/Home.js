@@ -1,5 +1,6 @@
 // frontend/src/pages/Home.js
-// !!! ОНОВЛЕНО URL-адреси для деплою !!!
+// Оновлена версія, яка робить точкові запити до бекенду для кожної категорії.
+// ТАКОЖ ОНОВЛЕНО СТИЛІ ДЛЯ СВІТЛОЇ ТЕМИ
 import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -29,11 +30,11 @@ export default function Home() {
     const fetchHomeProducts = async () => {
       setIsLoading(true);
       try {
-        // !!! ВИПРАВЛЕННЯ URL ТУТ !!!
+        // Робимо три паралельні запити до нашого розумного API
         const [consolesRes, gamesRes, accessoriesRes] = await Promise.all([
-          axios.get('https://bitzone-shop1.onrender.com/api/products?types=consoles&limit=10'),
-          axios.get('https://bitzone-shop1.onrender.com/api/products?types=games&limit=10'),
-          axios.get('https://bitzone-shop1.onrender.com/api/products?types=accs&limit=10')
+          axios.get('/api/products?types=consoles&limit=10'),
+          axios.get('/api/products?types=games&limit=10'),
+          axios.get('/api/products?types=accs&limit=10')
         ]);
 
         setConsoles(consolesRes.data.products || []);

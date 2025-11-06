@@ -477,8 +477,8 @@ export default function ProductDetail() {
       try {
         setLoading(true); setError(null);
         const [p, r] = await Promise.all([
-          axios.get(`http://bitzone-shop1.onrender.com/api/products/${id}`),
-          axios.get(`http://bitzone-shop1.onrender.com/api/products/${id}/reviews`)
+          axios.get(`/api/products/${id}`),
+          axios.get(`/api/products/${id}/reviews`)
         ]);
         setProduct(p.data);
         setReviews(r.data);
@@ -492,7 +492,7 @@ export default function ProductDetail() {
   }, [id]);
 
   const getImg = (url, w=2000, q=95) =>
-    url ? `http://bitzone-shop1.onrender.com/api/images?url=${encodeURIComponent(url)}&w=${w}&q=${q}` : '/assets/bitzone-logo1.png';
+    url ? `/api/images?url=${encodeURIComponent(url)}&w=${w}&q=${q}` : '/assets/bitzone-logo1.png';
 
   const images = useMemo(() => {
     if (!product) return [];
@@ -531,8 +531,8 @@ export default function ProductDetail() {
     if (rating === 0 || text.trim() === '') { setReviewError('Будь ласка, поставте оцінку та напишіть текст відгуку.'); return; }
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      await axios.post(`http://bitzone-shop1.onrender.com/api/products/${id}/reviews`, { rating, text }, config);
-      const r = await axios.get(`http://bitzone-shop1.onrender.com/api/products/${id}/reviews`);
+      await axios.post(`/api/products/${id}/reviews`, { rating, text }, config);
+      const r = await axios.get(`/api/products/${id}/reviews`);
       setReviews(r.data);
       setReviewSuccess('Дякуємо! Ваш відгук було опубліковано.');
       setRating(0); setText('');

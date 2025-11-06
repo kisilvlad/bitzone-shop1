@@ -62,7 +62,7 @@ export default function Register() {
     try {
       const cleaned = formData.phone.replace(/\D/g, '');
       const normalizedPhone = cleaned.startsWith('0') ? `38${cleaned}` : cleaned;
-      await axios.post('http://bitzone-shop1.onrender.com/api/auth/register', {
+      await axios.post('/api/auth/register', {
         ...formData,
         phone: normalizedPhone
       });

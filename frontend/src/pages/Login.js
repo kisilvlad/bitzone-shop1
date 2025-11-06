@@ -1,5 +1,4 @@
 // src/pages/Login.js
-// !!! ОНОВЛЕНО URL-адреси для деплою !!!
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -45,8 +44,7 @@ export default function Login() {
       const cleaned = formData.phone.replace(/\D/g, '');
       const normalizedPhone = cleaned.startsWith('0') ? `38${cleaned}` : cleaned;
 
-      // !!! ВИПРАВЛЕННЯ URL !!!
-      const response = await axios.post('https://bitzone-shop1.onrender.com/api/auth/login', {
+      const response = await axios.post('/api/auth/login', {
         phone: normalizedPhone,
         password: formData.password
       });

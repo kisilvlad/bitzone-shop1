@@ -354,7 +354,7 @@ export default function Products() {
       setError(null);
       try {
         const qs = params.toString();
-        const { data } = await axios.get(`http://bitzone-shop1.onrender.com/api/products?${qs}`);
+        const { data } = await axios.get(`/api/products?${qs}`);
         setProducts(data?.products || []);
         const total = data?.total ?? 0;
         setTotalPages(Math.max(1, Math.ceil(total / 20))); // limit=20
@@ -372,7 +372,7 @@ export default function Products() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const { data } = await axios.get('http://bitzone-shop1.onrender.com/api/products/categories');
+        const { data } = await axios.get('/api/products/categories');
         setCategories(data || []);
       } catch (err) {
         console.error('Помилка завантаження категорій:', err);

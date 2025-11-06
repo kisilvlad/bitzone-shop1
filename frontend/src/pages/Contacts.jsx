@@ -57,7 +57,7 @@ export default function Contacts() {
           </h3>
           <p className="p">Телефон: <a href="tel:+380505812852">+38 (050) 581-28-52</a></p>
           <p className="p">Email: <a href="mailto:support@bitzone.com">support@bitzone.com</a></p>
-          <p className="p">Telegram: <a href="https://t.me/BITZone_Shop" target="_blank" rel="noopener noreferrer">@bitzone_support</a></p>
+          <p className="p">Telegram: <a href="https://t.me/BiTZone_Shop" target="_blank" rel="noopener noreferrer">@bitzone_support</a></p>
         </InfoBlock>
 
         <InfoBlock style={{ borderTop: '1px solid var(--border-primary)', paddingTop: '24px' }}> {/* <-- ЗМІНЕНО */}

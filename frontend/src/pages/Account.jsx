@@ -95,7 +95,7 @@ const OrdersTab = ({ token, isMobile }) => {
       if (!token) return;
       setState({ loading: true, error: '' });
       try {
-        const { data } = await axios.get('http://localhost:5000/api/users/my-orders', {
+        const { data } = await axios.get('/api/users/my-orders', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!cancelled) {
@@ -181,7 +181,7 @@ const SettingsTab = ({ token, isMobile }) => {
       if (!token) return;
       setState({ loading: true, error: '', success: '' });
       try {
-        const { data } = await axios.get('http://localhost:5000/api/users/me', {
+        const { data } = await axios.get('/api/users/me', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!cancelled) {
@@ -206,7 +206,7 @@ const SettingsTab = ({ token, isMobile }) => {
     e.preventDefault();
     setState((s) => ({ ...s, error: '', success: '' }));
     try {
-      await axios.put('http://localhost:5000/api/users/me', formData, {
+      await axios.put('/api/users/me', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setState((s) => ({ ...s, success: 'Профіль успішно оновлено!' }));
@@ -276,7 +276,7 @@ const ReviewsTab = ({ token, isMobile }) => {
       if (!token) return;
       setState({ loading: true, error: '' });
       try {
-        const { data } = await axios.get('http://localhost:5000/api/users/me/reviews', {
+        const { data } = await axios.get('/api/users/me/reviews', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!cancelled) {
