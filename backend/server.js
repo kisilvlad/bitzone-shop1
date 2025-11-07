@@ -5,7 +5,6 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const helmet = require('helmet');
-const compression = require('compression');
 const connectDB = require('./config/db'); // Імпортуємо функцію підключення до БД
 const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
@@ -27,17 +26,14 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors());
 app.use(express.json()); // Для парсингу JSON-тіл запитів
 
-// ДОДАНО: стиснення відповідей
-app.use(compression());
-
-// ---------- ДОДАНО: роздача статики з правильним кешуванням ----------
+// ---------- Роздача статики з правильним кешуванням (БЕЗ нових залежностей) ----------
 const setStaticCacheHeaders = (res /*, filePath */) => {
-  // Річний кеш + immutable, щоб браузер не перетягував зображення при скролі/навігації
+  // Річний кеш + immutable — браузер не буде перетягувати однакові файли
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable, no-transform');
   // ETag/Last-Modified виставляються express.static автоматично
 };
 
-// Якщо у тебе папки інші — заміни шляхи нижче
+// /uploads — зображення товарів та інше
 const uploadsDir = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(uploadsDir, {
   etag: true,
@@ -46,6 +42,7 @@ app.use('/uploads', express.static(uploadsDir, {
   setHeaders: setStaticCacheHeaders
 }));
 
+// /public — за потреби (іконки, шрифти тощо)
 const publicDir = path.join(__dirname, 'public');
 app.use('/public', express.static(publicDir, {
   etag: true,
@@ -81,7 +78,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Сервер успішно запущено на порту http://localhost:${PORT}`);
 });
 
-// (Не обов'язково, але корисно бачити непродумані відмови промісів)
+// Логування необроблених винятків (не обов’язково, але корисно)
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);
 });
