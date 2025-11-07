@@ -6,18 +6,11 @@ const helmet = require('helmet');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
-const redisClient = require('./config/redisClient'); // Ваш Redis
-const imageCache = require('./middleware/imageCache'); // Ваш кеш
+const path = require('path'); // Ти використовував path, я його залишив
 
 // Ініціалізація
 if (process.env.NODE_ENV !== 'production') {
   console.log('Running in development mode, loading .env file...');
-  dotenv.config();
-} else {
-  // В production .env теж потрібен! RoApp API ключі та інше.
-  // Можливо, ви їх ставите глобально, але якщо ні - dotenv потрібен.
-  // Якщо .env файл лежить поруч, краще завжди його завантажувати:
   dotenv.config();
 }
 
@@ -31,7 +24,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // === ФІКС ДЛЯ RATE-LIMIT ТА NGINX/APACHE ===
-// Це виправить помилку "X-Forwarded-For"
+// Це виправить помилку "X-Forwarded-For" з логів
 app.set('trust proxy', 1);
 // ==========================================
 
@@ -53,7 +46,7 @@ app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/images', imageCache, require('./routes/imageRoutes')); // Ваш кеш для картинок
+app.use('/api/images', require('./routes/imageRoutes')); // <--- БЕЗ КЕШУ, як у тебе і було
 app.use('/api/webhooks', require('./routes/webhookRoutes'));
 
 // --- ЦЕНТРАЛІЗОВАНИЙ ОБРОБНИК ПОМИЛОК ---

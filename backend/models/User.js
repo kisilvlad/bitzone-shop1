@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const userSchema = mongoose.Schema(
     {
         // === ВИПРАВЛЕНО: 'username' -> 'name' ===
+        // Твій authController очікує 'name'
         name: {
             type: String,
             required: [true, "Будь ласка, додайте ім'я"],
@@ -22,7 +23,7 @@ const userSchema = mongoose.Schema(
             type: String,
             required: [true, "Будь ласка, додайте пароль"],
             minlength: 6,
-            select: false, // Не повертати пароль за замовчуванням
+            select: false, 
         },
         isAdmin: {
             type: Boolean,
@@ -41,7 +42,7 @@ const userSchema = mongoose.Schema(
     }
 );
 
-// Шифрування пароля перед збереженням
+// Шифрування пароля
 userSchema.pre('save', async function (next) {
     if (!this.isModified('password')) {
         next();
