@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = mongoose.Schema(
     {
+        // === ВИПРАВЛЕНО: 'username' -> 'name' ===
         name: {
             type: String,
             required: [true, "Будь ласка, додайте ім'я"],
@@ -28,12 +29,12 @@ const userSchema = mongoose.Schema(
             required: true,
             default: false,
         },
-        // === ДОДАНО ПОЛЕ ДЛЯ ЗВ'ЯЗКУ З ROAPP ===
+        // === ДОДАНО ПОЛЕ ДЛЯ ROAPP ===
         roappId: {
-            type: String, // RoApp ID може бути довгим, тому String надійніше
+            type: String,
             default: null,
         },
-        // ======================================
+        // ============================
     },
     {
         timestamps: true,
