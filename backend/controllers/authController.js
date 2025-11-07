@@ -1,12 +1,12 @@
 // backend/controllers/authController.js
-// !!! ГОЛОВНИЙ ФІКС - ГЕНЕРАЦІЯ ПРАВИЛЬНОГО ТОКЕНА !!!
+// !!! ФІКС ДЛЯ `username is required` !!!
 
 const User = require('../models/User');
 const asyncHandler = require('express-async-handler');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 
-// --- RoApp API (з твого orderController) ---
+// --- RoApp API ---
 const roappApi = axios.create({
     baseURL: 'https://api.roapp.io/',
     headers: {
@@ -15,9 +15,7 @@ const roappApi = axios.create({
     }
 });
 
-// --- Функція генерації токена ---
-// !!! ФІКС !!!
-// Ми очікуємо, що `id` тут - це числовий roAppId
+// --- Функція генерації токена (з roAppId) ---
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
@@ -30,14 +28,12 @@ const generateToken = (id) => {
 const registerUser = asyncHandler(async (req, res) => {
     const { firstName, lastName, email, phone, password } = req.body;
 
-    // 1. Перевіряємо, чи є вже такий Mongoose User
     const userExists = await User.findOne({ email });
     if (userExists) {
         res.status(400);
         throw new Error('Користувач з такою поштою вже існує');
     }
 
-    // 2. Створюємо клієнта в RoApp
     let roAppId;
     try {
         const newCustomerPayload = {
@@ -59,25 +55,25 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new Error('Не вдалося створити клієнта в CRM');
     }
 
-    // 3. Створюємо Mongoose User
+    // --- !!! ФІКС 'username' !!! ---
+    // Додаємо `username: email` сюди,
+    // тому що `User.js` вимагає це поле
     const user = await User.create({
+        username: email, // <-- ОСЬ ВИПРАВЛЕННЯ
         name: `${firstName} ${lastName}`,
         email,
         password,
-        roAppId: roAppId // !!! ЗБЕРІГАЄМО ID З ROAPP
+        roAppId: roAppId 
     });
 
-    // 4. Повертаємо Mongoose User + Токен з ROAPP ID
     if (user) {
         res.status(201).json({
-            _id: user._id, // Mongoose ID
-            roAppId: user.roAppId, // RoApp ID
+            _id: user._id, 
+            roAppId: user.roAppId, 
             name: user.name,
             email: user.email,
             isAdmin: user.isAdmin,
-            // !!! ГОЛОВНИЙ ФІКС !!!
-            // Створюємо токен, використовуючи roAppId, а не _id
-            token: generateToken(user.roAppId),
+            token: generateToken(user.roAppId), // Токен з roAppId
         });
     } else {
         res.status(400);
@@ -91,10 +87,10 @@ const registerUser = asyncHandler(async (req, res) => {
 const loginUser = asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
-    // 1. Знаходимо Mongoose User
+    // (Ця функція не створює, а тільки знаходить,
+    // тому `username` тут не потрібен)
     const user = await User.findOne({ email });
 
-    // 2. Перевіряємо пароль і повертаємо дані
     if (user && (await user.matchPassword(password))) {
         res.json({
             _id: user._id,
@@ -102,9 +98,7 @@ const loginUser = asyncHandler(async (req, res) => {
             name: user.name,
             email: user.email,
             isAdmin: user.isAdmin,
-            // !!! ГОЛОВНИЙ ФІКС !!!
-            // Створюємо токен, використовуючи roAppId
-            token: generateToken(user.roAppId),
+            token: generateToken(user.roAppId), // Токен з roAppId
         });
     } else {
         res.status(401);

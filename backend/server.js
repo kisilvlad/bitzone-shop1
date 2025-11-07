@@ -21,22 +21,21 @@ require('./services/syncService'); // Запускаємо наш сервіс
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ---------- !!! ФІКС ДЛЯ 'trust proxy' !!! ----------
+// Це повідомляє Express, що він знаходиться за 1 рівнем проксі (Nginx, Heroku, etc.)
+// Це ПОВИННО бути ДО `app.use(helmet())` та rate-limiters
+app.set('trust proxy', 1);
+
 // ---------- Безпека / базові middleware ----------
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors());
-
-// !!! ПОКРАЩЕННЯ: Додаємо ліміти на розмір тіла запиту для безпеки !!!
 app.use(express.json({ limit: '10kb' })); 
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// ---------- Роздача статики з правильним кешуванням (БЕЗ нових залежностей) ----------
+// ---------- Роздача статики (як і було) ----------
 const setStaticCacheHeaders = (res /*, filePath */) => {
-  // Річний кеш + immutable — браузер не буде перетягувати однакові файли
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable, no-transform');
-  // ETag/Last-Modified виставляються express.static автоматично
 };
-
-// /uploads — зображення товарів та інше
 const uploadsDir = path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(uploadsDir, {
   etag: true,
@@ -44,8 +43,6 @@ app.use('/uploads', express.static(uploadsDir, {
   fallthrough: true,
   setHeaders: setStaticCacheHeaders
 }));
-
-// /public — за потреби (іконки, шрифти тощо)
 const publicDir = path.join(__dirname, 'public');
 app.use('/public', express.static(publicDir, {
   etag: true,
@@ -54,7 +51,7 @@ app.use('/public', express.static(publicDir, {
   setHeaders: setStaticCacheHeaders
 }));
 
-// ---------- Rate Limiter (як у тебе, тільки на /api/auth) ----------
+// ---------- Rate Limiter (тепер він буде працювати коректно) ----------
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -65,13 +62,13 @@ const authLimiter = rateLimit({
   }
 });
 
-// ---------- МАРШРУТИ ----------
+// ---------- МАРШРУТИ (як і було) ----------
 app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/images', require('./routes/imageRoutes'));
-app.use('/api/webhooks', require('./routes/webhookRoutes')); // <-- як і було
+app.use('/api/webhooks', require('./routes/webhookRoutes')); 
 
 // ---------- Централізований обробник помилок ----------
 app.use(errorHandler);
@@ -81,7 +78,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Сервер успішно запущено на порту http://localhost:${PORT}`);
 });
 
-// Логування необроблених винятків (не обов’язково, але корисно)
+// Логування (як і було)
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);
 });
