@@ -13,6 +13,9 @@ const roappApi = axios.create({
   },
 });
 
+/**
+ * Оновлює або створює ОДИН товар у нашій локальній MongoDB.
+ */
 const syncSingleProduct = async (productId) => {
   try {
     console.log(`[Webhook] Синхронізація одного товару з roappId: ${productId}`);
@@ -24,7 +27,8 @@ const syncSingleProduct = async (productId) => {
     if (imageUrl) {
       try {
         const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
-        const lqipBuffer = await sharp(imageResponse.data).resize(20).blur(2).jpeg({ quality: 50 }).toBuffer();
+        const lqipBuffer = await sharp(imageResponse.data)
+          .resize(20).blur(2).jpeg({ quality: 50 }).toBuffer();
         lqip = `data:image/jpeg;base64,${lqipBuffer.toString('base64')}`;
       } catch (e) {
         console.error(`[Webhook] Не вдалося згенерувати LQIP для ${p.id}: ${e.message}`);
@@ -36,14 +40,11 @@ const syncSingleProduct = async (productId) => {
       name: p.title,
       price: Object.values(p.prices).find((price) => price > 0) || 0,
       category: p.category ? p.category.title : 'Різне',
-      description: p.description || '',
       image: imageUrl,
       images: p.images.map((img) => img.image),
       stock: p.is_serial && p.sernum_codes ? p.sernum_codes.length : p.is_serial ? 0 : 1,
       createdAtRoapp: p.created_at,
       lqip,
-      // !!! АНАЛОГІЧНЕ ВИПРАВЛЕННЯ ТУТ !!!
-      specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
     };
 
     await Product.updateOne({ roappId: p.id }, { $set: productData }, { upsert: true });
@@ -53,12 +54,14 @@ const syncSingleProduct = async (productId) => {
       await Product.deleteOne({ roappId: productId });
       console.log(`[Webhook] Видалено товар з roappId: ${productId} з локальної БД.`);
     } else {
-      console.error(`[Webhook] Помилка синхронізації одного товару ${productId}:`, error.message, error.stack);
+      console.error(`[Webhook] Помилка синхронізації одного товару ${productId}:`, error.message);
     }
   }
 };
 
-// ... решта коду webhookController залишається без змін ...
+/**
+ * Синхронізує ОДНУ категорію.
+ */
 const syncSingleCategory = async (categoryId) => {
     try {
         console.log(`[Webhook] Синхронізація однієї категорії з roappId: ${categoryId}`);
@@ -75,11 +78,20 @@ const syncSingleCategory = async (categoryId) => {
     }
 }
 
+/**
+ * @desc    Обробляє вхідні вебхуки від ROAPP
+ * @route   POST /api/webhooks/roapp
+ */
 const handleRoappWebhook = asyncHandler(async (req, res) => {
   const { event, data } = req.body;
   console.log(`[Webhook] Отримано подію: ${event}`);
-  if (data && data.entity_type && data.entity_id) {
+
+  if (data && data.entity_type) {
     const entityId = data.entity_id;
+    if (!entityId) {
+      return res.status(400).send('Немає entity_id у тілі вебхука');
+    }
+
     if (data.entity_type === 'Product') {
       switch (event) {
         case 'entity.created':
@@ -90,8 +102,13 @@ const handleRoappWebhook = asyncHandler(async (req, res) => {
           await Product.deleteOne({ roappId: entityId });
           console.log(`[Webhook] Видалено товар з roappId: ${entityId} з локальної БД.`);
           break;
+        default:
+          console.log(`[Webhook] Ігнорована подія товару: ${event}`);
+          break;
       }
-    } else if (data.entity_type === 'ProductCategory') {
+    }
+
+    if (data.entity_type === 'ProductCategory') {
         switch (event) {
             case 'entity.created':
             case 'entity.updated':
@@ -101,12 +118,18 @@ const handleRoappWebhook = asyncHandler(async (req, res) => {
                 await Category.deleteOne({ roappId: entityId });
                 console.log(`[Webhook] Видалено категорію з roappId: ${entityId} з локальної БД.`);
                 break;
+            default:
+                console.log(`[Webhook] Ігнорована подія категорії: ${event}`);
+                break;
         }
     }
   }
+
   res.status(200).send('Webhook received');
 });
 
+// --- ВАЖЛИВИЙ ЕКСПОРТ ---
+// Переконайтеся, що назва тут `handleRoappWebhook`
 module.exports = {
   handleRoappWebhook,
 };

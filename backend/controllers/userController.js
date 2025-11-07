@@ -48,29 +48,16 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 // @desc    Отримання замовлень користувача
 // @route   GET /api/users/my-orders
 const getMyOrders = asyncHandler(async (req, res) => {
-    console.log(`[DEBUG] Запит замовлень для користувача ID: ${req.user.id}`);
     const response = await roappApi.get('orders', { params: { client_id: req.user.id, _sort: "-created_at" } });
-
-    // --- ВИПРАВЛЕННЯ ТУТ ---
-    // Додаємо перевірку, що дані існують і є масивом
-    if (!response.data || !Array.isArray(response.data.data)) {
-        console.log('[DEBUG] Roapp API не повернув дані або повернув невірний формат. Відправляємо порожній масив.');
-        return res.json([]);
-    }
-    
-    console.log(`[DEBUG] Знайдено ${response.data.data.length} замовлень для користувача ID: ${req.user.id}`);
-
     const orders = response.data.data.map(order => ({
         id: order.id,
         createdAt: order.created_at,
         status: order.status.title,
         statusColor: order.status.color,
-        // Робимо поле total надійним: якщо total_sum не прийшов, ставимо 0
-        total: order.total_sum || 0
+        total: order.total_sum
     }));
     res.json(orders);
 });
-
 
 // @desc    Отримання відгуків користувача
 // @route   GET /api/users/me/reviews
@@ -104,7 +91,6 @@ const getMyReviews = asyncHandler(async (req, res) => {
         throw new Error('Не вдалося завантажити відгуки користувача.');
     }
 });
-
 
 module.exports = { 
     getUserProfile, 

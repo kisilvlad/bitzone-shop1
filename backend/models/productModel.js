@@ -1,3 +1,4 @@
+
 // backend/models/productModel.js
 const mongoose = require('mongoose');
 

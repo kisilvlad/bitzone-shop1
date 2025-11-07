@@ -24,4 +24,3 @@ router.get('/:id/reviews', getProductReviews);
 router.post('/:id/reviews', authMiddleware, createProductReview);
 
 module.exports = router;
-

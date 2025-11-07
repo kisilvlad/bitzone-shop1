@@ -7,25 +7,30 @@ const Review = require('../models/reviewModel');
 const allBadWords = require('../config/profanity');
 
 // Оновлені та більш точні словники ключ-слів для побудови регулярних виразів.
+// Це допомагає уникнути помилкових спрацьовувань.
 const TYPE_KEYS = {
   consoles: ['консол', 'приставк', 'console', 'playstation 5', 'ps5', 'playstation 4', 'ps4', 'xbox series', 'steam deck'],
   games: ['гра', 'ігри', 'игра', 'game', 'диск', 'disc', 'blu-ray', 'картридж', 'cartridge', 'для playstation', 'для xbox', 'for ps4', 'for ps5', 'for xbox'],
   accs: ['аксесуар', 'accessory', 'геймпад', 'контролер', 'джойстик', 'controller', 'dualsense', 'dualshock', 'joy-con', 'headset', 'кабел', 'заряд', 'dock', 'чохол', 'glass', 'клавіатур', 'миш', 'mouse', 'adapter', 'hub', 'stand', 'кріплен']
 };
+
 const PLATFORM_KEYS = {
   sony: ['sony', 'playstation', 'ps5', 'ps4', 'ps3', 'psp', 'ps vita', 'dualsense', 'dualshock'],
   xbox: ['xbox', 'series x', 'series s', 'one', '360'],
   nintendo: ['nintendo', 'switch', 'joy-con', 'wii', 'gamecube', '3ds', 'ds', 'gameboy'],
   steamdeck: ['steam deck', 'steamdeck']
 };
+
 // Допоміжна функція для створення єдиного регулярного виразу з масиву слів
 const buildRegex = (keys) => new RegExp(keys.join('|'), 'i');
+
 
 // @desc    Отримання категорій товарів
 const getCategories = asyncHandler(async (req, res) => {
   const categories = await Category.find({}).sort({ name: 1 });
   res.json(categories.map(cat => ({ id: cat.roappId, name: cat.name })));
 });
+
 
 // @desc    Отримання товарів з фінальною, суворою логікою фільтрації
 const getProducts = asyncHandler(async (req, res) => {
@@ -57,43 +62,43 @@ const getProducts = asyncHandler(async (req, res) => {
         queryConditions.push({ $text: { $search: search } });
     }
 
-    // --- 4. Фільтр за ПЛАТФОРМОЮ (!!! ОНОВЛЕНА ЛОГІКА !!!) ---
+    // --- 4. Фільтр за ПЛАТФОРМОЮ з логікою ВИКЛЮЧЕННЯ ---
     if (platforms) {
         const selectedPlatforms = platforms.split(',');
+        
+        // Створюємо regex для платформ, які ми шукаємо
         const platformIncludeKeywords = selectedPlatforms.flatMap(p => PLATFORM_KEYS[p] || []);
         const platformIncludeRegex = buildRegex(platformIncludeKeywords);
         queryConditions.push({ $or: [{ name: platformIncludeRegex }, { category: platformIncludeRegex }] });
-        
-        // !!! ЛОГІКА ВИКЛЮЧЕННЯ ЗАСТОСОВУЄТЬСЯ ТІЛЬКИ ЯКЩО НЕМАЄ ПОШУКУ !!!
-        if (!search) {
-            const allPlatformKeys = Object.keys(PLATFORM_KEYS);
-            const platformsToExclude = allPlatformKeys.filter(p => !selectedPlatforms.includes(p));
-            if (platformsToExclude.length > 0) {
-                const platformExcludeKeywords = platformsToExclude.flatMap(p => PLATFORM_KEYS[p] || []);
-                const platformExcludeRegex = buildRegex(platformExcludeKeywords);
-                queryConditions.push({ name: { $not: platformExcludeRegex } });
-            }
+
+        // Створюємо regex для платформ, які треба ВИКЛЮЧИТИ
+        const allPlatformKeys = Object.keys(PLATFORM_KEYS);
+        const platformsToExclude = allPlatformKeys.filter(p => !selectedPlatforms.includes(p));
+        if (platformsToExclude.length > 0) {
+            const platformExcludeKeywords = platformsToExclude.flatMap(p => PLATFORM_KEYS[p] || []);
+            const platformExcludeRegex = buildRegex(platformExcludeKeywords);
+            // Додаємо умову, що назва товару НЕ повинна містити ключові слова інших платформ
+            queryConditions.push({ name: { $not: platformExcludeRegex } });
         }
     }
 
-    // --- 5. Фільтр за ТИПОМ (!!! ОНОВЛЕНА ЛОГІКА !!!) ---
+    // --- 5. Фільтр за ТИПОМ з логікою ВИКЛЮЧЕННЯ ---
     if (types) {
         const selectedTypes = types.split(',');
         const typeRegex = buildRegex(selectedTypes.flatMap(type => TYPE_KEYS[type] || []));
         
+        // Завжди шукаємо за ключовими словами обраного типу
         queryConditions.push({ $or: [{ name: typeRegex }, { category: typeRegex }] });
-        
-        // !!! ЛОГІКА ВИКЛЮЧЕННЯ ЗАСТОСОВУЄТЬСЯ ТІЛЬКИ ЯКЩО НЕМАЄ ПОШУКУ !!!
-        if (!search) {
-            if (selectedTypes.includes('consoles') && !selectedTypes.includes('games')) {
-                queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.games) } });
-            }
-            if (selectedTypes.includes('consoles') && !selectedTypes.includes('accs')) {
-                queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.accs) } });
-            }
-            if (selectedTypes.includes('games') && !selectedTypes.includes('consoles')) {
-                 queryConditions.push({ name: { $not: buildRegex(['консол', 'приставк', 'console']) } });
-            }
+
+        // Додаємо логіку виключення, щоб уникнути перетинів
+        if (selectedTypes.includes('consoles') && !selectedTypes.includes('games')) {
+            queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.games) } });
+        }
+        if (selectedTypes.includes('consoles') && !selectedTypes.includes('accs')) {
+            queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.accs) } });
+        }
+        if (selectedTypes.includes('games') && !selectedTypes.includes('consoles')) {
+             queryConditions.push({ name: { $not: buildRegex(['консол', 'приставк', 'console']) } });
         }
     }
     
@@ -116,7 +121,7 @@ const getProducts = asyncHandler(async (req, res) => {
 
     const products = await Product.find(query, projection).sort(sortQuery).limit(limit).skip(skip);
     const total = await Product.countDocuments(query);
-    
+
     res.json({
         products: products.map(p => ({ ...p.toObject(), _id: p.roappId })),
         total
@@ -124,6 +129,7 @@ const getProducts = asyncHandler(async (req, res) => {
 });
 
 
+// Решта функцій контролера залишається без змін...
 // @desc    Отримання одного товару за ID
 const getProductById = asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -135,6 +141,7 @@ const getProductById = asyncHandler(async (req, res) => {
         throw new Error('Товар не знайдено');
     }
 });
+
 // @desc    Отримання відгуків для товару
 const getProductReviews = asyncHandler(async (req, res) => {
     const { id: roappId } = req.params;
@@ -147,6 +154,7 @@ const getProductReviews = asyncHandler(async (req, res) => {
         createdAt: review.createdAt,
     })));
 });
+
 // @desc    Створення нового відгуку
 const createProductReview = asyncHandler(async (req, res) => {
     const { id: roappId } = req.params;

@@ -1,6 +1,4 @@
 // backend/services/syncService.js
-// !!! ФІКС: Прибрано миттєвий запуск та змінено розклад cron !!!
-
 const mongoose = require('mongoose');
 const axios = require('axios');
 const sharp = require('sharp');
@@ -84,6 +82,8 @@ const syncProducts = async () => {
           stock: p.is_serial && p.sernum_codes ? p.sernum_codes.length : p.is_serial ? 0 : 1,
           createdAtRoapp: p.created_at,
           lqip,
+          // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ТУТ !!!
+          // Перетворюємо об'єкт custom_fields на масив значень
           specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
         
@@ -112,10 +112,9 @@ const runSync = async () => {
     await syncProducts();
 }
 
-// runSync(); // <-- !!! ФІКС №1: Ми КОМЕНТУЄМО цей рядок, щоб сервер стартував миттєво !!!
+runSync();
 
-// !!! ФІКС №2: Ми змінюємо розклад на "раз на добу о 3:00 ночі" !!!
-cron.schedule('0 3 * * *', () => {
-  console.log('⏰ Запуск планової ДОБОВОЇ синхронізації...');
+cron.schedule('*/15 * * * *', () => {
+  console.log('⏰ Запуск планової синхронізації...');
   runSync();
 });
