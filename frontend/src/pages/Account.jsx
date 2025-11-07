@@ -23,10 +23,10 @@ const useIsMobile = (bp = 820) => {
 const mapStatus = (statusRaw) => {
   const s = (statusRaw || '').toString().toLowerCase();
   if (/delivered|completed|викон|достав/i.test(s)) return { label: 'Доставлено', color: '#1fbf64' };
-  if (/paid|оплач/i.test(s))                     return { label: 'Оплачено',   color: '#00CED1' };
-  if (/processing|в оброб/i.test(s))             return { label: 'В обробці',  color: '#FFD700' };
-  if (/canceled|cancelled|скас/i.test(s))        return { label: 'Скасовано',  color: '#dc3545' };
-  if (/pending|очіку/i.test(s))                  return { label: 'Очікує',     color: '#8A2BE2' };
+  if (/paid|оплач/i.test(s))                 return { label: 'Оплачено',   color: '#00CED1' };
+  if (/processing|в оброб/i.test(s))           return { label: 'В обробці',  color: '#FFD700' };
+  if (/canceled|cancelled|скас/i.test(s))       return { label: 'Скасовано',  color: '#dc3545' };
+  if (/pending|очіку/i.test(s))               return { label: 'Очікує',     color: '#8A2BE2' };
   return { label: statusRaw || 'Невідомо', color: 'var(--text-3)' };
 };
 
@@ -95,7 +95,10 @@ const OrdersTab = ({ token, isMobile }) => {
       if (!token) return;
       setState({ loading: true, error: '' });
       try {
-        const { data } = await axios.get('/api/users/my-orders', {
+        // !!! ФІКС !!!
+        // Маршрут для "моїх замовлень" знаходиться у /api/orders,
+        // а не /api/users/my-orders
+        const { data } = await axios.get('/api/orders', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!cancelled) {

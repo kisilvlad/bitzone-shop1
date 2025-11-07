@@ -1,5 +1,5 @@
 // backend/middleware/authMiddleware.js
-// !!! ФІНАЛЬНЕ ВИПРАВЛЕННЯ (BSONTypeError / CastError) !!!
+// !!! ГОЛОВНИЙ ФІКС ДЛЯ 401 !!!
 
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
@@ -14,9 +14,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             
             // !!! ФІКС !!!
-            // Раніше було: User.findById(decoded.id),
-            // але в токені у нас roAppId (число), а не Mongoose _id.
-            // Шукаємо користувача за полем roAppId.
+            // Шукаємо Mongoose-користувача за `roAppId` з токена.
             req.user = await User.findOne({ roAppId: decoded.id }).select('-password');
 
             if (!req.user) {
@@ -24,11 +22,9 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
                 throw new Error('Not authorized, token failed (user not found)');
             }
             
-            // !!! ВАЖЛИВО !!!
-            // Ми додаємо `id` до `req.user`
-            // Це числовий `roAppId`, який потрібен `orderController`
-            // для запитів до roappApi.
-            req.user.id = req.user.roAppId; 
+            // !!! ГОЛОВНЕ !!!
+            // Ми БІЛЬШЕ НЕ перезаписуємо req.user.id.
+            // Тепер `req.user` має і `_id` (для Mongoose) і `roAppId` (для RoApp).
 
             next();
         } catch (error) {
@@ -52,17 +48,12 @@ const optionalAuthMiddleware = asyncHandler(async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             
-            // !!! ФІКС !!!
-            // Та сама логіка, що й у authMiddleware
+            // !!! ФІКС !!! (Та сама логіка)
             req.user = await User.findOne({ roAppId: decoded.id }).select('-password');
             
-            if (req.user) {
-                // Додаємо `roAppId` як `req.user.id`
-                req.user.id = req.user.roAppId;
-            }
+            // (Не перезаписуємо ID)
 
         } catch (error) {
-            // Якщо токен невалідний, просто ігноруємо
             req.user = null;
         }
     } else {
@@ -71,15 +62,14 @@ const optionalAuthMiddleware = asyncHandler(async (req, res, next) => {
     next();
 });
 
-// Функція `admin` (яку ми додали раніше, вона правильна)
+// Функція `admin` (правильна, залишаємо)
 const admin = (req, res, next) => {
     if (req.user && req.user.isAdmin) {
         next();
     } else {
-        res.status(403); // 403 Forbidden
+        res.status(403); 
         throw new Error('Not authorized as an admin');
     }
 };
 
-// Експортуємо все
 module.exports = { authMiddleware, optionalAuthMiddleware, admin };

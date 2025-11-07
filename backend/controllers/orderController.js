@@ -1,10 +1,10 @@
 // backend/controllers/orderController.js
-// !!! ПОВНІСТЮ ВИПРАВЛЕНИЙ ФАЙЛ ПІД ROAPP API !!!
+// !!! ВИПРАВЛЕННЯ, ЩОБ ВИКОРИСТОВУВАТИ roAppId !!!
 
 const axios = require('axios');
 const asyncHandler = require('express-async-handler');
 
-// --- Ініціалізація roappApi ---
+// ... (roappApi та ID константи ... )
 const roappApi = axios.create({
     baseURL: 'https://api.roapp.io/',
     headers: {
@@ -12,17 +12,15 @@ const roappApi = axios.create({
         'authorization': `Bearer ${process.env.ROAPP_API_KEY}`
     }
 });
-
-// --- ID з твого коду ---
 const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
 const createOrder = asyncHandler(async (req, res) => {
-    // Ця функція з твого коду, вона виглядає коректною
+    // ... (код createOrder не змінився, він використовує req.user.id) ...
+    // ... (але `optionalAuthMiddleware` тепер має це виправити) ...
+    
+    // (Повний код createOrder з твого файлу)
     const { customerData, cartItems } = req.body;
     if (!cartItems || cartItems.length === 0) {
         res.status(400);
@@ -30,12 +28,9 @@ const createOrder = asyncHandler(async (req, res) => {
     }
 
     let customerId;
-    // Ми беремо ID клієнта з req.user, якщо він залогінений
-    // Це важливо для getMyOrders
-    if (req.user && req.user.id) {
-        customerId = req.user.id;
+    if (req.user && req.user.roAppId) { // !!! ФІКС: перевіряємо roAppId !!!
+        customerId = req.user.roAppId;
     } else {
-        // Пошук або створення клієнта (для незалогінених)
         const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': customerData.phone } });
         if (searchResponse.data.data.length > 0) {
             customerId = searchResponse.data.data[0].id;
@@ -59,9 +54,7 @@ const createOrder = asyncHandler(async (req, res) => {
         assignee_id: MY_ASSIGNEE_ID,
         due_date: new Date().toISOString()
     });
-
     const orderId = createOrderResponse.data.id;
-
     for (const item of cartItems) {
         await roappApi.post(`orders/${orderId}/items`, {
             product_id: item.id,
@@ -74,30 +67,24 @@ const createOrder = asyncHandler(async (req, res) => {
             warranty: { "period": "0", "periodUnits": "months" }
         });
     }
-
     res.status(201).json({ success: true, orderId: orderId });
 });
 
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
-    // Ця функція з твого коду. Вона ВЖЕ МАЄ ПЕРЕВІРКУ БЕЗПЕКИ!
     const { id: orderId } = req.params;
-    // req.user.id - це roappApi ID (ми це знаємо з createOrder)
-    const { id: userId, isAdmin } = req.user; 
+    
+    // !!! ФІКС: Явно беремо roAppId та isAdmin з req.user !!!
+    const userId = req.user.roAppId;
+    const isAdmin = req.user.isAdmin;
 
     const { data: orderData } = await roappApi.get(`orders/${orderId}`);
     
-    // !!! ФІКС БЕЗПЕКИ !!!
-    // Додаємо перевірку, що користувач - адмін (isAdmin)
     if (String(orderData.client_id) !== String(userId) && !isAdmin) {
-        res.status(403); // 403 Forbidden
+        res.status(403);
         throw new Error('Доступ заборонено');
     }
-
+    // ... (решта функції getOrderById ... )
     const { data: itemsData } = await roappApi.get(`orders/${orderId}/items`);
-
     const items = itemsData.data.map(item => ({
         id: item.product ? item.product.id : item.entity_id,
         name: item.product ? item.product.title : 'Товар обробляється...',
@@ -105,7 +92,6 @@ const getOrderById = asyncHandler(async (req, res) => {
         quantity: item.quantity,
         image: (item.product && item.product.images?.length > 0) ? item.product.images[0].image : '/assets/bitzone-logo1.png'
     }));
-
     const result = {
         id: orderData.id,
         createdAt: orderData.created_at,
@@ -117,20 +103,15 @@ const getOrderById = asyncHandler(async (req, res) => {
     res.json(result);
 });
 
-// @desc    Update order to paid (Симуляція)
-// @route   PUT /api/orders/:id/pay
-// @access  Private
 const updateOrderToPaid = asyncHandler(async (req, res) => {
+    // ... (код без змін) ...
     const { id } = req.params;
     console.log(`Замовлення ${id} позначено як оплачене (симуляція)`);
     res.json({ id, isPaid: true, paidAt: new Date() });
 });
 
-// @desc    Notify me when product is available
-// @route   POST /api/orders/notify-me
-// @access  Public
 const notifyMe = asyncHandler(async (req, res) => {
-    // Ця функція з твого коду, виглядає коректною
+    // ... (код без змін) ...
     const { productId, productName, phone } = req.body;
     if (!productId || !productName || !phone) {
         res.status(400);
@@ -166,76 +147,51 @@ const notifyMe = asyncHandler(async (req, res) => {
     }
 });
 
-
-// --- !!! НОВА ФУНКЦІЯ, ЯКА ВИРІШУЄ ПРОБЛЕМУ !!! ---
-// @desc    Get logged in user orders
-// @route   GET /api/orders
-// @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
-    // Беремо ID користувача з middleware (це roappApi ID)
-    const userId = req.user.id;
+    // !!! ФІКС: Явно беремо roAppId !!!
+    const userId = req.user.roAppId;
 
     if (!userId) {
         res.status(401);
-        throw new Error('Користувач не авторизований');
+        throw new Error('Користувач не авторизований (немає roAppId)');
     }
 
-    // Робимо запит до roappApi, але просимо замовлення ТІЛЬКИ 
-    // для 'client_id', який дорівнює нашому userId.
-    // Це виправляє помилку "всі бачать всі замовлення".
     const { data: ordersResponse } = await roappApi.get('orders', {
         params: {
             client_id: userId,
-            sort: '-created_at' // Сортуємо від нових до старих
+            sort: '-created_at'
         }
     });
-
-    // Адаптуємо дані з roappApi у той формат,
-    // який очікує твій фронтенд (спрощений список)
+    // ... (решта функції без змін) ...
     const orders = ordersResponse.data.map(order => ({
         id: order.id,
         createdAt: order.created_at,
         total: order.total_sum,
         status: order.status ? order.status.title : 'В обробці',
         statusColor: order.status ? order.status.color : '#888888',
-        // Фронтенд може очікувати ці поля, але roappApi їх не має
         isPaid: order.status ? (order.status.title === 'Оплачено' || order.status.title === 'Виконано') : false,
         isDelivered: order.status ? order.status.title === 'Виконано' : false,
     }));
-
     res.json(orders);
 });
 
-// --- !!! НОВА ФУНКЦІЯ ДЛЯ АДМІНІВ !!! ---
-// @desc    Get all orders (for Admin)
-// @route   GET /api/orders/all
-// @access  Private/Admin
 const getAllOrders = asyncHandler(async (req, res) => {
-    // Ця функція доступна лише якщо middleware 
-    // перевірив і додав `req.user.isAdmin`
+    // ... (код без змін) ...
     if (!req.user.isAdmin) {
         res.status(403);
         throw new Error('Доступ заборонено. Потрібні права адміністратора.');
     }
-
-    // Адмін отримує ВСІ замовлення
     const { data: ordersResponse } = await roappApi.get('orders', {
          params: { sort: '-created_at' }
     });
-    
-    // Тут ми не можемо 'populate' Mongoose,
-    // але ми можемо повернути все, що дає roappApi
     res.json(ordersResponse.data);
 });
 
-
-// !!! ОНОВЛЕНИЙ ЕКСПОРТ !!!
-// Переконайся, що твій `orderRoutes.js` використовує ці назви
 module.exports = { 
     createOrder, 
     getOrderById,
     updateOrderToPaid,
     notifyMe,
-    getMyOrders, // <-- ДОДАНО
-    getAllOrders // <-- ДОДАНО (для адмінки)
+    getMyOrders,
+    getAllOrders
 };
