@@ -151,9 +151,9 @@ export default function Home() {
                   }}>
                     <span className="mono" style={{ fontWeight: 900, letterSpacing: 0.4, fontSize: isMobile ? 14 : 16, color: 'var(--accent-yellow)' }}>Придбай</span>
                     <span aria-hidden style={{ opacity: .7 }}>•</span>
-                    <span className="mono" style={{ fontWeight: 900, letterSpacing: 0.4, fontSize: isMobile ? 14 : 16, color: 'var(--accent-turquoise)' }}>грай</span>
+                    <span className="mono" style={{ fontWeight: 900, letterSpacing: 0.4, fontSize: isMobile ? 14 : 16, color: 'var(--accent-turquoise)' }}>Грай</span>
                     <span aria-hidden style={{ opacity: .7 }}>•</span>
-                    <span className="mono" style={{ fontWeight: 900, letterSpacing: 0.4, fontSize: isMobile ? 14 : 16, color: 'var(--accent-pink)' }}>продавай!</span>
+                    <span className="mono" style={{ fontWeight: 900, letterSpacing: 0.4, fontSize: isMobile ? 14 : 16, color: 'var(--accent-pink)' }}>Продавай!</span>
                   </div>
                 </div>
                 {isMobile && (

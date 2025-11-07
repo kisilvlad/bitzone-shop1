@@ -1,12 +1,12 @@
 // src/App.js
-// !!! ВИПРАВЛЕНО ШЛЯХ НА 'Account' (з двома 'c') !!!
 
 import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 
-// Компонент-завантажувач
+// !!! ПОКРАЩЕННЯ: Компонент-завантажувач винесено за межі 'App' !!!
+// Це запобігає його повторному створенню при кожному рендері App
 const PageLoader = () => (
   <div style={{ display: 'grid', placeItems: 'center', minHeight: '60vh' }}>
     <p className="p" style={{ color: 'var(--text-secondary)' }}>Завантаження сторінки...</p>
@@ -21,8 +21,7 @@ const Cart = React.lazy(() => import('./pages/Cart'));
 const Login = React.lazy(() => import('./pages/Login'));
 const Register = React.lazy(() => import('./pages/Register'));
 const Wishlist = React.lazy(() => import('./pages/Wishlist'));
-// --- ОСЬ ВИПРАВЛЕННЯ (дві 'c' в 'Account') ---
-const Account = React.lazy(() => import('./pages/Account')); 
+const Account = React.lazy(() => import('./pages/Account')); // Ваш фікс вже тут
 const OrderDetail = React.lazy(() => import('./pages/OrderDetail'));
 const Contacts = React.lazy(() => import('./pages/Contacts'));
 const About = React.lazy(() => import('./pages/About'));
