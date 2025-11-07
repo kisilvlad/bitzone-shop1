@@ -24,7 +24,10 @@ const PORT = process.env.PORT || 5000;
 // ---------- Безпека / базові middleware ----------
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors());
-app.use(express.json()); // Для парсингу JSON-тіл запитів
+
+// !!! ПОКРАЩЕННЯ: Додаємо ліміти на розмір тіла запиту для безпеки !!!
+app.use(express.json({ limit: '10kb' })); 
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // ---------- Роздача статики з правильним кешуванням (БЕЗ нових залежностей) ----------
 const setStaticCacheHeaders = (res /*, filePath */) => {
