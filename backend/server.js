@@ -6,13 +6,11 @@ const helmet = require('helmet');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
-const path = require('path'); // Ти використовував path, я його залишив
+const path = require('path'); 
 
-// Ініціалізація
-if (process.env.NODE_ENV !== 'production') {
-  console.log('Running in development mode, loading .env file...');
-  dotenv.config();
-}
+// === ІНІЦІАЛІЗАЦІЯ ===
+// Завантажуємо .env, оскільки він потрібен і в production для ключів
+dotenv.config();
 
 // --- ПІДКЛЮЧЕННЯ ДО БАЗИ ДАНИХ ---
 connectDB();
@@ -35,7 +33,7 @@ app.use(express.json());
 // Rate Limiter
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10, // 10 спроб на 15 хвилин
+    max: 10,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Забагато спроб входу з цієї IP-адреси, будь ласка, спробуйте знову через 15 хвилин' }
@@ -46,7 +44,7 @@ app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/images', require('./routes/imageRoutes')); // <--- БЕЗ КЕШУ, як у тебе і було
+app.use('/api/images', require('./routes/imageRoutes')); // === Твоя оригінальна версія ===
 app.use('/api/webhooks', require('./routes/webhookRoutes'));
 
 // --- ЦЕНТРАЛІЗОВАНИЙ ОБРОБНИК ПОМИЛОК ---
