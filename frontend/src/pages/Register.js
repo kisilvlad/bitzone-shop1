@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
 export default function Register() {
-  const [formData, setFormData] = useState({ firstName: '', lastName: '', phone: '', password: '' });
+  // <-- ФІКС: Додано 'email'
+  const [formData, setFormData] = useState({ firstName: '', lastName: '', phone: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,6 +32,13 @@ export default function Register() {
     return passwordRegex.test(password);
   };
   
+  // ——— Валідація Email (Додано) ———
+  const validateEmail = (email) => {
+    if (!email) return true; // Email не обов'язковий
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const validateForm = () => {
     const newErrors = {};
     if (!formData.firstName.trim()) newErrors.firstName = "Ім'я обов'язкове";
@@ -41,6 +49,11 @@ export default function Register() {
       newErrors.phone = "Телефон обов'язковий";
     } else if (!validatePhone(cleanedPhone)) {
       newErrors.phone = "Невірний формат телефону (наприклад: 0671234567)";
+    }
+
+    // <-- ФІКС: Валідація email (якщо він введений)
+    if (formData.email && !validateEmail(formData.email)) {
+        newErrors.email = "Невірний формат email";
     }
 
     if (!formData.password) {
@@ -62,6 +75,8 @@ export default function Register() {
     try {
       const cleaned = formData.phone.replace(/\D/g, '');
       const normalizedPhone = cleaned.startsWith('0') ? `38${cleaned}` : cleaned;
+      
+      // <-- ФІКС: 'email' тепер включено в запит
       await axios.post('/api/auth/register', {
         ...formData,
         phone: normalizedPhone
@@ -90,7 +105,7 @@ export default function Register() {
         initial="hidden" 
         animate="visible" 
         className="surface center auth-container"
-        style={{ padding: 'clamp(24px, 5vw, 48px)' }} // Додаємо padding
+        style={{ padding: 'clamp(24px, 5vw, 48px)' }} 
       >
         <div 
           style={{ 
@@ -148,6 +163,14 @@ export default function Register() {
                     <motion.input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="0..." />
                     {errors.phone && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.phone}</p>}
                   </div>
+
+                  {/* <-- ФІКС: Додано поле Email --> */}
+                  <div>
+                    <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Email (необов'язково)</label>
+                    <motion.input type="email" name="email" value={formData.email} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="Введіть email" />
+                    {errors.email && <p className="p" style={{ color: 'var(--accent-pink)', fontSize: '10px', marginTop: '4px' }}>{errors.email}</p>}
+                  </div>
+                  
                   <div>
                     <label className="h2 mono" style={{ color: 'var(--accent-yellow)', marginBottom: '8px', display: 'block', fontSize: '12px' }}>Пароль</label>
                     <motion.input type="password" name="password" value={formData.password} onChange={handleInputChange} className="input" style={{ width: '100%' }} placeholder="Мін. 8 символів, 1 велика літера, 1 цифра" />
@@ -179,18 +202,18 @@ export default function Register() {
                 style={{
                   width: '70px',
                   height: '70px',
-                  borderRadius: '18px', // Замість '50%' для кола, робимо квадрат
-                  background: 'var(--accent-green)', // <-- ЗМІНЕНО
+                  borderRadius: '18px', 
+                  background: 'var(--accent-green)', 
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 0 25px var(--shadow-btn-green), inset 0 0 10px rgba(255, 255, 255, 0.2)' // <-- ЗМІНЕНО
+                  boxShadow: '0 0 25px var(--shadow-btn-green), inset 0 0 10px rgba(255, 255, 255, 0.2)' 
                 }}
               >
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <motion.path
                         d="M5 13L9 17L19 7"
-                        stroke="var(--text-on-accent-light)" // <-- ЗМІНЕНО
+                        stroke="var(--text-on-accent-light)" 
                         strokeWidth="3"
                         strokeLinecap="round"
                         strokeLinejoin="round"
