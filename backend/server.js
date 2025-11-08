@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const helmet = require('helmet');
-const connectDB = require('./config/db'); // Імпортуємо функцію підключення до БД
+const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const rateLimit = require('express-rate-limit');
 
@@ -22,7 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ---------- !!! ФІКС ДЛЯ 'trust proxy' !!! ----------
-// Це повідомляє Express, що він знаходиться за 1 рівнем проксі (Nginx, Heroku, etc.)
+// Це повідомляє Express, що він знаходиться за 1 рівнем проксі (Nginx, etc.)
 // Це ПОВИННО бути ДО `app.use(helmet())` та rate-limiters
 app.set('trust proxy', 1);
 
