@@ -143,7 +143,6 @@ const loginUser = asyncHandler(async (req, res) => {
         }
     }
     // --- Кінець "лікування" ---
-
     res.json({
         _id: user._id,
         roAppId: user.roAppId,
