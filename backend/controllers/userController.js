@@ -1,28 +1,15 @@
 // backend/controllers/userController.js
-// !!! ФІКС: ВИКОРИСТАННЯ ПРАВИЛЬНИХ ID (roAppId vs _id) !!!
+// !!! ФІКС: Виправлено ID для RoApp vs Mongoose !!!
 
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
-const axios = require('axios');
-
-// --- RoApp API (для відгуків) ---
-const roappApi = axios.create({
-    baseURL: 'https://api.roapp.io/',
-    headers: {
-        'accept': 'application/json',
-        'authorization': `Bearer ${process.env.ROAPP_API_KEY}`
-    }
-});
+const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУЄМО НОВИЙ ФАЙЛ !!!
 
 // @desc    Get user profile (for Settings tab)
-// @route   GET /api/users/me
+// @route   GET /api/users/me (або /api/users/profile)
 // @access  Private
 const getUserProfile = asyncHandler(async (req, res) => {
     // Ця функція працює з Mongoose. 
-    // Вона (правильно) використовує `req.user._id`.
-    // Помилка 500 була через `req.user` = null. 
-    // Наш новий `authController` це виправив.
-    
     // `req.user` приходить з `authMiddleware`
     const user = await User.findById(req.user._id); 
 
@@ -34,7 +21,6 @@ const getUserProfile = asyncHandler(async (req, res) => {
             email: user.email,
             phone: user.phone,
             isAdmin: user.isAdmin,
-            // Додано поля з Account.jsx
             firstName: user.firstName || user.name.split(' ')[0],
             lastName: user.lastName || user.name.split(' ')[1] || '',
             birthday: user.birthday
@@ -46,10 +32,9 @@ const getUserProfile = asyncHandler(async (req, res) => {
 });
 
 // @desc    Update user profile (for Settings tab)
-// @route   PUT /api/users/me
+// @route   PUT /api/users/me (або /api/users/profile)
 // @access  Private
 const updateUserProfile = asyncHandler(async (req, res) => {
-    // Ця функція теж працює з Mongoose
     const user = await User.findById(req.user._id);
 
     if (user) {
@@ -59,17 +44,13 @@ const updateUserProfile = asyncHandler(async (req, res) => {
         user.birthday = req.body.birthday || user.birthday;
         user.name = `${user.firstName} ${user.lastName}`.trim();
         
-        // (Тут можна додати логіку оновлення email/phone/password,
-        // але вона має бути складнішою, з перевірками)
-
         const updatedUser = await user.save();
 
-        // Оновлюємо RoApp (асинхронно, не чекаємо)
+        // Оновлюємо RoApp (асинхронно)
         if (user.roAppId) {
             roappApi.put(`contacts/people/${user.roAppId}`, {
                 first_name: updatedUser.firstName,
                 last_name: updatedUser.lastName,
-                // (RoApp не має 'birthday')
             }).catch(err => {
                 console.error(`[RoApp] Помилка оновлення профілю ${user.roAppId}:`, err.message);
             });
@@ -97,28 +78,24 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 // @access  Private
 const getUserReviews = asyncHandler(async (req, res) => {
     // !!! ФІКС !!!
-    // Лог показав, що сюди йшов Mongoose ID (`690...`).
-    // Нам потрібен `roAppId` (число)
+    // Беремо `roAppId` (число)
     const customerId = req.user.roAppId;
 
     console.log(`----- ЗАПИТ ВІДГУКІВ для RoApp ID: ${customerId} -----`);
 
     if (!customerId) {
         console.warn(`Користувач ${req.user.phone} не має roAppId. Неможливо завантажити відгуки.`);
-        res.json([]); // Повертаємо порожній масив
+        res.json([]); 
         return;
     }
     
     try {
-        //
         const { data } = await roappApi.get('/customer-reviews', {
             params: {
                 customer_id: customerId 
             }
         });
         
-        // Адаптуємо відповідь RoApp до формату,
-        // який очікує Account.jsx
         const reviews = data.data.map(review => ({
             id: review.id,
             rating: review.rating,
@@ -130,14 +107,11 @@ const getUserReviews = asyncHandler(async (req, res) => {
                 image: review.product?.images?.length > 0 ? review.product.images[0].image : '/assets/bitzone-logo1.png'
             }
         }));
-
         res.json(reviews);
 
     } catch (error) {
-        // Якщо RoApp повертає 404 (немає відгуків),
-        // ми просто повертаємо порожній масив
         if (error.response && error.response.status === 404) {
-            console.log(`Відповідь від ROAPP 404 (немає відгуків), відправляємо порожній масив на фронтенд.`);
+            console.log(`Відповідь від ROAPP 404 (немає відгуків), відправляємо порожній масив.`);
             res.json([]);
         } else {
             console.error(`[RoApp] Помилка завантаження відгуків для ${customerId}:`, error.message);
@@ -147,12 +121,11 @@ const getUserReviews = asyncHandler(async (req, res) => {
     }
 });
 
-// (Інші функції: getUsers, deleteUser, getUserById, updateUser...)
-// ... вони, ймовірно, для адмінки і зараз не є проблемою ...
-
+// Експортуємо тільки те, що використовується (згідно з userRoutes.js)
 module.exports = {
     getUserProfile,
     updateUserProfile,
     getUserReviews,
-    // ... (експорт інших функцій, якщо вони є) ...
+    // (інші функції адміна, такі як deleteUser, getUserById, updateUser,
+    // які є у тебе, тут не потрібні для виправлення Account.jsx)
 };
