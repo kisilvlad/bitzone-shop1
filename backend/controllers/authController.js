@@ -1,5 +1,5 @@
 // backend/controllers/authController.js
-// !!! ВЕРСІЯ З РОЗШИРЕНИМ ЛОГУВАННЯМ !!!
+// !!! ВЕРСІЯ З ВИПРАВЛЕННЯМ ДЛЯ "email: null" !!!
 
 const User = require('../models/User');
 const asyncHandler = require('express-async-handler');
@@ -18,6 +18,7 @@ const generateToken = (id) => {
 };
 
 // --- Функція пошуку/створення RoApp ID ---
+// (Ця функція у вас написана ПРАВИЛЬНО, залишаємо її)
 const findOrCreateRoAppCustomer = async (user) => {
     try {
         console.log(`[DEBUG] 1. Пошук RoApp юзера за телефоном: ${user.phone}`); // <-- ЛОГ 1
@@ -85,16 +86,35 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new Error('Не вдалося створити клієнта в CRM (не отримано ID)');
     }
 
-    const user = await User.create({
+    // ==========================================================
+    // (!!!) ОСЬ ГОЛОВНЕ ВИПРАВЛЕННЯ (!!!)
+    // ==========================================================
+    
+    // 1. Створюємо об'єкт для нового користувача
+    const newUserPayload = {
         name: `${firstName} ${lastName || ''}`.trim(),
         firstName,
         lastName: lastName || '',
         phone,
-        email: email || null, 
-        password,
+        password, // <--- Пароль тут. "Гачок" pre-save у User.js його захешує
         username: phone, 
-        roAppId: roAppId 
-    });
+        roAppId: roAppId
+    };
+
+    // 2. Додаємо email до об'єкта, ТІЛЬКИ ЯКЩО він не порожній.
+    // Якщо `email` - це `undefined`, `null` або `""`,
+    // поле `email` буде пропущено (omitted) при створенні.
+    // Це саме те, що потрібно для `sparse: true` індексу.
+    if (email) {
+        newUserPayload.email = email;
+    }
+
+    // 3. Створюємо користувача з підготовленими даними
+    const user = await User.create(newUserPayload);
+    
+    // ==========================================================
+    // КІНЕЦЬ ВИПРАВЛЕННЯ
+    // ==========================================================
 
     if (user) {
         res.status(201).json({
@@ -116,7 +136,7 @@ const registerUser = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 const loginUser = asyncHandler(async (req, res) => {
-    // ... (логіка логіну залишається без змін) ...
+    // ... (Ваша логіка логіну чудова, залишаємо її без змін) ...
     const { phone, password } = req.body;
 
     const user = await User.findOne({ phone });
