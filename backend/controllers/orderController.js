@@ -2,10 +2,7 @@
 // ВЕРСІЯ 2 (з виправленням збою 503)
 
 const asyncHandler = require('express-async-handler');
-const Order = require('../models/Order'); // <-- Цей імпорт ПРАВИЛЬНИЙ
-
-// (!!!) Я ВИДАЛИВ звідси зайві require('roappApi') та require('Product'), 
-// які викликали збій сервера (!!!)
+const Order = require('../models/Order'); // <-- ТІЛЬКИ ЦЕЙ ІМПОРТ
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -25,9 +22,6 @@ const addOrderItems = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('No order items');
   } else {
-    // Тут може бути ваша логіка синхронізації з RoApp при створенні замовлення
-    // ...
-
     const order = new Order({
       orderItems,
       user: req.user._id, // Прив'язка до поточного користувача
@@ -54,12 +48,10 @@ const getOrderById = asyncHandler(async (req, res) => {
   );
 
   if (order) {
-    // Додаткова перевірка: переконатися, що це замовлення належить користувачу
-    // або що користувач є адміном
     if (order.user._id.equals(req.user._id) || req.user.isAdmin) {
       res.json(order);
     } else {
-      res.status(401); // Unauthorized
+      res.status(401);
       throw new Error('Not authorized to view this order');
     }
   } else {
@@ -78,7 +70,6 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
     order.isPaid = true;
     order.paidAt = Date.now();
     order.paymentResult = {
-      // Це може надходити від платіжної системи
       id: req.body.id,
       status: req.body.status,
       update_time: req.body.update_time,
@@ -100,10 +91,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
   //
   // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ДЛЯ "МОЇХ ЗАМОВЛЕНЬ" (ЗАЛИШЕНО) !!!
   //
-  // БУЛО: const orders = await Order.find({});
-  // СТАЛО:
   const orders = await Order.find({ user: req.user._id });
-  
   res.json(orders);
 });
 
@@ -111,7 +99,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
 // @route   GET /api/orders
 // @access  Private/Admin
 const getOrders = asyncHandler(async (req, res) => {
-  // Ця функція для адмінів, вона ПОВИННА повертати всі замовлення
   const orders = await Order.find({}).populate('user', 'id name');
   res.json(orders);
 });

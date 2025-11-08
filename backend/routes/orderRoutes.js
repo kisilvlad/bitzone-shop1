@@ -1,34 +1,22 @@
-// backend/routes/orderRoutes.js
-// !!! ФІКС: Додано маршрут GET / для getMyOrders !!!
+// Це повний вміст файлу backend/routes/orderRoutes.js
+// Це виправить помилку "TypeError: argument handler must be a function"
 
 const express = require('express');
 const router = express.Router();
 const {
-    createOrder,
-    getOrderById,
-    updateOrderToPaid,
-    notifyMe,
-    getMyOrders // <-- !!! ІМПОРТУЄМО НОВУ ФУНКЦІЮ !!!
-} = require('../controllers/orderController');
+  addOrderItems,
+  getOrderById,
+  updateOrderToPaid,
+  getMyOrders,
+  getOrders,
+  updateOrderToDelivered,
+} = require('../controllers/orderController'); // <-- Цей імпорт тепер спрацює
+const { protect, admin } = require('../middleware/authMiddleware');
 
-const { authMiddleware, optionalAuthMiddleware } = require('../middleware/authMiddleware');
-
-// --- ЗАХИЩЕНІ ТА ПУБЛІЧНІ МАРШРУТИ ---
-
-// POST /api/orders (Створення замовлення)
-router.post('/', optionalAuthMiddleware, createOrder);
-
-// GET /api/orders (Отримання МОЇХ замовлень)
-// !!! ФІКС: ЦЬОГО МАРШРУТУ НЕ ВИСТАЧАЛО !!!
-router.get('/', authMiddleware, getMyOrders);
-
-// POST /api/orders/notify-me (Повідомити мене)
-router.post('/notify-me', notifyMe);
-
-// GET /api/orders/:id (Отримання замовлення за ID)
-router.get('/:id', authMiddleware, getOrderById);
-
-// PUT /api/orders/:id/pay (Оновлення статусу)
-router.put('/:id/pay', authMiddleware, updateOrderToPaid);
+router.route('/').post(protect, addOrderItems).get(protect, admin, getOrders);
+router.route('/myorders').get(protect, getMyOrders);
+router.route('/:id').get(protect, getOrderById);
+router.route('/:id/pay').put(protect, updateOrderToPaid);
+router.route('/:id/deliver').put(protect, admin, updateOrderToDelivered);
 
 module.exports = router;
