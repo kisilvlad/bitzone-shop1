@@ -1,29 +1,34 @@
+// backend/routes/orderRoutes.js
+// !!! ФІКС: Додано маршрут GET / для getMyOrders !!!
+
 const express = require('express');
 const router = express.Router();
 const {
-  addOrderItems, // <-- Імпортуємо addOrderItems
-  getOrderById,
-  updateOrderToPaid,
-  getMyOrders,
-  getOrders,
-  updateOrderToDelivered,
+    createOrder,
+    getOrderById,
+    updateOrderToPaid,
+    notifyMe,
+    getMyOrders // <-- !!! ІМПОРТУЄМО НОВУ ФУНКЦІЮ !!!
 } = require('../controllers/orderController');
-const { protect, admin } = require('../middleware/authMiddleware');
+
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/authMiddleware');
+
+// --- ЗАХИЩЕНІ ТА ПУБЛІЧНІ МАРШРУТИ ---
 
 // POST /api/orders (Створення замовлення)
-// GET /api/orders (Отримання всіх замовлень - Адмін)
-router.route('/').post(protect, addOrderItems).get(protect, admin, getOrders);
+router.post('/', optionalAuthMiddleware, createOrder);
 
-// GET /api/orders/myorders (Отримання МОЇХ замовлень)
-router.route('/myorders').get(protect, getMyOrders);
+// GET /api/orders (Отримання МОЇХ замовлень)
+// !!! ФІКС: ЦЬОГО МАРШРУТУ НЕ ВИСТАЧАЛО !!!
+router.get('/', authMiddleware, getMyOrders);
+
+// POST /api/orders/notify-me (Повідомити мене)
+router.post('/notify-me', notifyMe);
 
 // GET /api/orders/:id (Отримання замовлення за ID)
-router.route('/:id').get(protect, getOrderById);
+router.get('/:id', authMiddleware, getOrderById);
 
-// PUT /api/orders/:id/pay (Оновлення статусу оплати)
-router.route('/:id/pay').put(protect, updateOrderToPaid);
-
-// PUT /api/orders/:id/deliver (Оновлення статусу доставки - Адмін)
-router.route('/:id/deliver').put(protect, admin, updateOrderToDelivered);
+// PUT /api/orders/:id/pay (Оновлення статусу)
+router.put('/:id/pay', authMiddleware, updateOrderToPaid);
 
 module.exports = router;

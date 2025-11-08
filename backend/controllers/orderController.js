@@ -1,128 +1,188 @@
-// Це повний вміст файлу backend/controllers/orderController.js
-// СУМІСНА ВЕРСІЯ, яка містить createOrder, notifyMe та виправлення для getMyOrders
+// backend/controllers/orderController.js
+// !!! ФІКС: Додано БЕЗПЕЧНУ `getMyOrders` !!!
 
 const asyncHandler = require('express-async-handler');
-const Order = require('../models/Order');
+const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУЄМО НОВИЙ ФАЙЛ !!!
+
+const MY_BRANCH_ID = 212229;
+const MY_ORDER_TYPE_ID = 325467;
+const MY_ASSIGNEE_ID = 306951;
 
 // @desc    Create new order
 // @route   POST /api/orders
-// @access  Private/Optional
+// @access  Private
 const createOrder = asyncHandler(async (req, res) => {
-  const {
-    orderItems,
-    shippingAddress,
-    paymentMethod,
-    itemsPrice,
-    taxPrice,
-    shippingPrice,
-    totalPrice,
-  } = req.body;
+    const { customerData, cartItems } = req.body;
+    if (!cartItems || cartItems.length === 0) {
+        res.status(400);
+        throw new Error('Неможливо створити замовлення без товарів');
+    }
 
-  if (orderItems && orderItems.length === 0) {
-    res.status(400);
-    throw new Error('No order items');
-  } else {
-    const order = new Order({
-      orderItems,
-      // Ваш роутер використовує optionalAuthMiddleware, 
-      // тому req.user може не існувати.
-      user: req.user ? req.user._id : null, 
-      shippingAddress,
-      paymentMethod,
-      itemsPrice,
-      taxPrice,
-      shippingPrice,
-      totalPrice,
+    let customerId;
+    if (req.user && typeof req.user.roAppId === 'number') {
+        customerId = req.user.roAppId;
+    } else {
+        const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': customerData.phone } });
+        if (searchResponse.data.data.length > 0) {
+            customerId = searchResponse.data.data[0].id;
+        } else {
+            const newCustomerPayload = {
+                first_name: customerData.firstName,
+                last_name: customerData.lastName,
+                phones: [{"title": "Основний", "phone": customerData.phone, "notify": false}],
+                email: customerData.email,
+                address: `${customerData.city}, ${customerData.address}`
+            };
+            const createCustomerResponse = await roappApi.post('contacts/people', newCustomerPayload);
+            customerId = createCustomerResponse.data.id;
+        }
+    }
+
+    const createOrderResponse = await roappApi.post('orders', {
+        client_id: customerId,
+        branch_id: MY_BRANCH_ID,
+        order_type_id: MY_ORDER_TYPE_ID,
+        assignee_id: MY_ASSIGNEE_ID,
+        due_date: new Date().toISOString()
     });
 
-    const createdOrder = await order.save();
-    res.status(201).json(createdOrder);
-  }
+    const orderId = createOrderResponse.data.id;
+
+    for (const item of cartItems) {
+        await roappApi.post(`orders/${orderId}/items`, {
+            product_id: item.id,
+            quantity: item.qty,
+            price: item.price,
+            assignee_id: MY_ASSIGNEE_ID,
+            entity_id: item.id,
+            cost: 0,
+            discount: { "type": "value", "percentage": 0, "amount": 0, "sponsor": "staff" },
+            warranty: { "period": "0", "periodUnits": "months" }
+        });
+    }
+    res.status(201).json({ success: true, orderId: orderId });
 });
 
 // @desc    Get order by ID
 // @route   GET /api/orders/:id
 // @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
-  // Цей маршрут захищений (authMiddleware), тому req.user 100% існує
-  const order = await Order.findById(req.params.id).populate(
-    'user',
-    'name email'
-  );
+    const { id: orderId } = req.params;
+    const userId = req.user.roAppId;
+    const isAdmin = req.user.isAdmin;
 
-  if (order) {
-    // Перевіряємо, чи це замовлення належить користувачу, АБО чи користувач - адмін
-    if (order.user._id.equals(req.user._id) || (req.user && req.user.isAdmin)) {
-      res.json(order);
-    } else {
-      res.status(401);
-      throw new Error('Not authorized to view this order');
+    const { data: orderData } = await roappApi.get(`orders/${orderId}`);
+    
+    if (String(orderData.client_id) !== String(userId) && !isAdmin) {
+        res.status(403);
+        throw new Error('Доступ заборонено');
     }
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
-  }
+
+    const { data: itemsData } = await roappApi.get(`orders/${orderId}/items`);
+    const items = itemsData.data.map(item => ({
+        id: item.product ? item.product.id : item.entity_id,
+        name: item.product ? item.product.title : 'Товар обробляється...',
+        price: item.price,
+        quantity: item.quantity,
+        image: (item.product && item.product.images?.length > 0) ? item.product.images[0].image : '/assets/bitzone-logo1.png'
+    }));
+
+    const result = {
+        id: orderData.id,
+        createdAt: orderData.created_at,
+        status: orderData.status ? orderData.status.title : 'В обробці',
+        statusColor: orderData.status ? orderData.status.color : '#888888',
+        total: orderData.total_sum || items.reduce((sum, current) => sum + (current.price * current.quantity), 0),
+        items: items,
+    };
+    res.json(result);
 });
 
-// @desc    Update order to paid
+// @desc    Update order to paid (Симуляція)
 // @route   PUT /api/orders/:id/pay
 // @access  Private
 const updateOrderToPaid = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-
-  if (order) {
-    // Тут також можна додати перевірку, чи це замовлення належить користувачу
-    if (!order.user._id.equals(req.user._id) && !(req.user && req.user.isAdmin)) {
-         res.status(401);
-         throw new Error('Not authorized to pay for this order');
-    }
-
-    order.isPaid = true;
-    order.paidAt = Date.now();
-    order.paymentResult = {
-      id: req.body.id,
-      status: req.body.status,
-      update_time: req.body.update_time,
-      email_address: req.body.email_address,
-    };
-
-    const updatedOrder = await order.save();
-    res.json(updatedOrder);
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
-  }
+    const { id } = req.params;
+    console.log(`Замовлення ${id} позначено як оплачене (симуляція)`);
+    res.json({ id, isPaid: true, paidAt: new Date() });
 });
 
-// @desc    Placeholder for notifyMe
+// @desc    Notify me when product is available
 // @route   POST /api/orders/notify-me
 // @access  Public
 const notifyMe = asyncHandler(async (req, res) => {
-    // Це функція-заглушка, щоб сервер не падав
-    // Вона потрібна вашому orderRoutes.js
-    console.log('Запит "Повідомити мене" отримано:', req.body);
-    res.status(200).json({ message: 'Запит на сповіщення прийнято' });
+    const { productId, productName, phone } = req.body;
+    if (!productId || !productName || !phone) {
+        res.status(400);
+        throw new Error('Недостатньо даних для створення запиту');
+    }
+    res.status(200).json({ success: true, message: 'Запит прийнято!' });
+    try {
+        let customerId;
+        const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': phone } });
+        if (searchResponse.data.data.length > 0) {
+            customerId = searchResponse.data.data[0].id;
+        } else {
+            const newCustomerPayload = { first_name: "Клієнт (очікує товар)", last_name: phone, phones: [{"title": "Основний", "phone": phone, "notify": false}] };
+            const createCustomerResponse = await roappApi.post('contacts/people', newCustomerPayload);
+            customerId = createCustomerResponse.data.id;
+        }
+        const deadlineDate = new Date();
+        deadlineDate.setDate(deadlineDate.getDate() + 30);
+        const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
+        const taskPayload = { 
+            title: `Повідомити про наявність: ${productName}`, 
+            description: `Клієнт ${phone} очікує ${productName} (ID: ${productId}).`, 
+            client_id: customerId, 
+            branch_id: MY_BRANCH_ID, 
+            assignees: [MY_ASSIGNEE_ID], 
+            deadline: deadlineTimestamp 
+        };
+        await roappApi.post('tasks', taskPayload);
+    } catch (error) {
+        console.error(`[NotifyMe ФОНОВА ПОМИЛКА]`, error.message);
+    }
 });
 
 
+// --- !!! ГОЛОВНИЙ ФІКС БЕЗПЕКИ (ЗАМОВЛЕННЯ) !!! ---
 // @desc    Get logged in user orders
-// @route   GET /api/orders (або /api/orders/myorders, залежно від роутера)
+// @route   GET /api/orders
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
-  //
-  // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ДЛЯ "МОЇХ ЗАМОВЛЕНЬ" !!!
-  //
-  // Цей маршрут захищений (authMiddleware), тому req.user 100% існує
-  const orders = await Order.find({ user: req.user._id });
-  
-  res.json(orders);
+    const userId = req.user.roAppId;
+
+    // !!! "ПАРАНОЇДАЛЬНА" ПЕРЕВІРКА !!!
+    if (typeof userId !== 'number') {
+        console.error(`Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`);
+        res.status(401);
+        throw new Error('Не вдалося верифікувати ID користувача для CRM');
+    }
+
+    const { data: ordersResponse } = await roappApi.get('orders', {
+        params: {
+            client_id: userId,
+            sort: '-created_at' 
+        }
+    });
+
+    const orders = ordersResponse.data.map(order => ({
+        id: order.id,
+        createdAt: order.created_at,
+        total: order.total_sum,
+        status: order.status ? order.status.title : 'В обробці',
+        statusColor: order.status ? order.status.color : '#888888',
+        isPaid: order.status ? (order.status.title === 'Оплачено' || order.status.title === 'Виконано') : false,
+        isDelivered: order.status ? order.status.title === 'Виконано' : false,
+    }));
+
+    res.json(orders);
 });
 
-// Експортуємо ТОЧНО те, що очікує ваш orderRoutes.js
-module.exports = {
-  createOrder,
-  getOrderById,
-  updateOrderToPaid,
-  notifyMe,
-  getMyOrders
+module.exports = { 
+    createOrder, 
+    getOrderById,
+    updateOrderToPaid,
+    notifyMe,
+    getMyOrders, // <-- ДОДАНО
 };
