@@ -1,10 +1,13 @@
+// Це повний вміст файлу backend/controllers/orderController.js
+// СУМІСНА ВЕРСІЯ, яка містить createOrder, notifyMe та виправлення для getMyOrders
+
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 
 // @desc    Create new order
 // @route   POST /api/orders
-// @access  Private
-const addOrderItems = asyncHandler(async (req, res) => {
+// @access  Private/Optional
+const createOrder = asyncHandler(async (req, res) => {
   const {
     orderItems,
     shippingAddress,
@@ -21,7 +24,9 @@ const addOrderItems = asyncHandler(async (req, res) => {
   } else {
     const order = new Order({
       orderItems,
-      user: req.user._id, 
+      // Ваш роутер використовує optionalAuthMiddleware, 
+      // тому req.user може не існувати.
+      user: req.user ? req.user._id : null, 
       shippingAddress,
       paymentMethod,
       itemsPrice,
@@ -39,13 +44,15 @@ const addOrderItems = asyncHandler(async (req, res) => {
 // @route   GET /api/orders/:id
 // @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
+  // Цей маршрут захищений (authMiddleware), тому req.user 100% існує
   const order = await Order.findById(req.params.id).populate(
     'user',
     'name email'
   );
 
   if (order) {
-    if (order.user._id.equals(req.user._id) || req.user.isAdmin) {
+    // Перевіряємо, чи це замовлення належить користувачу, АБО чи користувач - адмін
+    if (order.user._id.equals(req.user._id) || (req.user && req.user.isAdmin)) {
       res.json(order);
     } else {
       res.status(401);
@@ -64,6 +71,12 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
 
   if (order) {
+    // Тут також можна додати перевірку, чи це замовлення належить користувачу
+    if (!order.user._id.equals(req.user._id) && !(req.user && req.user.isAdmin)) {
+         res.status(401);
+         throw new Error('Not authorized to pay for this order');
+    }
+
     order.isPaid = true;
     order.paidAt = Date.now();
     order.paymentResult = {
@@ -81,49 +94,35 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Placeholder for notifyMe
+// @route   POST /api/orders/notify-me
+// @access  Public
+const notifyMe = asyncHandler(async (req, res) => {
+    // Це функція-заглушка, щоб сервер не падав
+    // Вона потрібна вашому orderRoutes.js
+    console.log('Запит "Повідомити мене" отримано:', req.body);
+    res.status(200).json({ message: 'Запит на сповіщення прийнято' });
+});
+
+
 // @desc    Get logged in user orders
-// @route   GET /api/orders/myorders
+// @route   GET /api/orders (або /api/orders/myorders, залежно від роутера)
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
   //
   // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ДЛЯ "МОЇХ ЗАМОВЛЕНЬ" !!!
   //
+  // Цей маршрут захищений (authMiddleware), тому req.user 100% існує
   const orders = await Order.find({ user: req.user._id });
   
   res.json(orders);
 });
 
-// @desc    Get all orders
-// @route   GET /api/orders
-// @access  Private/Admin
-const getOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({}).populate('user', 'id name');
-  res.json(orders);
-});
-
-// @desc    Update order to delivered
-// @route   PUT /api/orders/:id/deliver
-// @access  Private/Admin
-const updateOrderToDelivered = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-
-  if (order) {
-    order.isDelivered = true;
-    order.deliveredAt = Date.now();
-
-    const updatedOrder = await order.save();
-    res.json(updatedOrder);
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
-  }
-});
-
+// Експортуємо ТОЧНО те, що очікує ваш orderRoutes.js
 module.exports = {
-  addOrderItems, // <-- Експортуємо addOrderItems
+  createOrder,
   getOrderById,
   updateOrderToPaid,
-  getMyOrders,
-  getOrders,
-  updateOrderToDelivered,
+  notifyMe,
+  getMyOrders
 };
