@@ -1,8 +1,5 @@
-// Це повний вміст файлу backend/controllers/orderController.js
-// ВЕРСІЯ 2 (з виправленням збою 503)
-
 const asyncHandler = require('express-async-handler');
-const Order = require('../models/Order'); // <-- ТІЛЬКИ ЦЕЙ ІМПОРТ
+const Order = require('../models/Order');
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -24,7 +21,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
   } else {
     const order = new Order({
       orderItems,
-      user: req.user._id, // Прив'язка до поточного користувача
+      user: req.user._id, 
       shippingAddress,
       paymentMethod,
       itemsPrice,
@@ -89,9 +86,10 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
   //
-  // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ДЛЯ "МОЇХ ЗАМОВЛЕНЬ" (ЗАЛИШЕНО) !!!
+  // !!! ОСНОВНЕ ВИПРАВЛЕННЯ ДЛЯ "МОЇХ ЗАМОВЛЕНЬ" !!!
   //
   const orders = await Order.find({ user: req.user._id });
+  
   res.json(orders);
 });
 
@@ -122,7 +120,7 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  addOrderItems,
+  addOrderItems, // <-- Експортуємо addOrderItems
   getOrderById,
   updateOrderToPaid,
   getMyOrders,
