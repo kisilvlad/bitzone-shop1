@@ -20,7 +20,6 @@ router.post('/', optionalAuthMiddleware, createOrder);
 
 // GET /api/orders (Отримання МОЇХ замовлень)
 // !!! ФІКС: ЦЬОГО МАРШРУТУ НЕ ВИСТАЧАЛО !!!
-// (Саме сюди стукає Account.jsx)
 router.get('/', authMiddleware, getMyOrders);
 
 // POST /api/orders/notify-me (Повідомити мене)

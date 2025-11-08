@@ -20,7 +20,7 @@ const createOrder = asyncHandler(async (req, res) => {
     }
 
     let customerId;
-    if (req.user && req.user.roAppId) {
+    if (req.user && typeof req.user.roAppId === 'number') {
         customerId = req.user.roAppId;
     } else {
         // Логіка для "гостей"
@@ -114,8 +114,6 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
 // @route   POST /api/orders/notify-me
 // @access  Public
 const notifyMe = asyncHandler(async (req, res) => {
-    // ... (код notifyMe не змінюємо, він не є проблемою) ...
-    // ... (він також має бути оновлений, щоб використовувати `roappApi`, але це не критично ЗАРАЗ) ...
     const { productId, productName, phone } = req.body;
     if (!productId || !productName || !phone) {
         res.status(400);
@@ -150,23 +148,23 @@ const notifyMe = asyncHandler(async (req, res) => {
 });
 
 
-// --- !!! НОВА ФУНКЦІЯ, ЯКА ВИРІШУЄ ПРОБЛЕМУ "ВСІХ ЗАМОВЛЕНЬ" !!! ---
+// --- !!! ГОЛОВНИЙ ФІКС БЕЗПЕКИ (ЗАМОВЛЕННЯ) !!! ---
 // @desc    Get logged in user orders
 // @route   GET /api/orders
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
+    // Ми очікуємо, що `req.user.roAppId` - це число (навіть 0).
     const userId = req.user.roAppId;
 
-    // !!! ГОЛОВНИЙ ФІКС БЕЗПЕКИ !!!
-    // Якщо `userId` з якоїсь причини відсутній (наприклад, "старий"
-    // користувач, якого не вдалося "вилікувати"),
-    // ми кидаємо помилку, а НЕ відправляємо запит без `client_id`.
-    if (!userId) {
-        console.error(`Критична помилка безпеки: getMyOrders викликано без roAppId для Mongoose user ${req.user._id}`);
+    // !!! "ПАРАНОЇДАЛЬНА" ПЕРЕВІРКА !!!
+    // Вона 100% зупинить "витік", якщо ID не є числом.
+    if (typeof userId !== 'number') {
+        console.error(`Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`);
         res.status(401);
         throw new Error('Не вдалося верифікувати ID користувача для CRM');
     }
 
+    // Тепер ми впевнені, що `userId` - це число, і запит безпечний
     const { data: ordersResponse } = await roappApi.get('orders', {
         params: {
             client_id: userId,

@@ -1,16 +1,17 @@
 // backend/controllers/userController.js
-// !!! ФІКС: Виправлено ID для RoApp vs Mongoose !!!
+// !!! ФІКС: Виправлено ID для RoApp (Відгуки) vs Mongoose (Налаштування) !!!
 
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУЄМО НОВИЙ ФАЙЛ !!!
 
 // @desc    Get user profile (for Settings tab)
-// @route   GET /api/users/me (або /api/users/profile)
+// @route   GET /api/users/me
 // @access  Private
 const getUserProfile = asyncHandler(async (req, res) => {
-    // Ця функція працює з Mongoose. 
-    // `req.user` приходить з `authMiddleware`
+    // Помилка 500 була через `req.user = null`.
+    // Наш новий `authController` це виправив.
+    // Ця функція ПРАВИЛЬНО використовує Mongoose `req.user._id`.
     const user = await User.findById(req.user._id); 
 
     if (user) {
@@ -27,18 +28,18 @@ const getUserProfile = asyncHandler(async (req, res) => {
         });
     } else {
         res.status(404);
-        throw new Error('User not found');
+        throw new Error('User not found (Mongoose)');
     }
 });
 
 // @desc    Update user profile (for Settings tab)
-// @route   PUT /api/users/me (або /api/users/profile)
+// @route   PUT /api/users/me
 // @access  Private
 const updateUserProfile = asyncHandler(async (req, res) => {
+    // Ця функція ПРАВИЛЬНО використовує Mongoose `req.user._id`.
     const user = await User.findById(req.user._id);
 
     if (user) {
-        // Оновлюємо Mongoose
         user.firstName = req.body.firstName || user.firstName;
         user.lastName = req.body.lastName || user.lastName;
         user.birthday = req.body.birthday || user.birthday;
@@ -47,7 +48,7 @@ const updateUserProfile = asyncHandler(async (req, res) => {
         const updatedUser = await user.save();
 
         // Оновлюємо RoApp (асинхронно)
-        if (user.roAppId) {
+        if (typeof user.roAppId === 'number') {
             roappApi.put(`contacts/people/${user.roAppId}`, {
                 first_name: updatedUser.firstName,
                 last_name: updatedUser.lastName,
@@ -69,7 +70,7 @@ const updateUserProfile = asyncHandler(async (req, res) => {
         });
     } else {
         res.status(404);
-        throw new Error('User not found');
+        throw new Error('User not found (Mongoose)');
     }
 });
 
@@ -78,12 +79,13 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 // @access  Private
 const getUserReviews = asyncHandler(async (req, res) => {
     // !!! ФІКС !!!
-    // Беремо `roAppId` (число)
+    // Лог показав, що сюди йшов Mongoose ID (`690...`).
+    // Нам потрібен `roAppId` (число)
     const customerId = req.user.roAppId;
 
     console.log(`----- ЗАПИТ ВІДГУКІВ для RoApp ID: ${customerId} -----`);
 
-    if (!customerId) {
+    if (typeof customerId !== 'number') {
         console.warn(`Користувач ${req.user.phone} не має roAppId. Неможливо завантажити відгуки.`);
         res.json([]); 
         return;
@@ -121,11 +123,9 @@ const getUserReviews = asyncHandler(async (req, res) => {
     }
 });
 
-// Експортуємо тільки те, що використовується (згідно з userRoutes.js)
+// Експортуємо тільки те, що використовується
 module.exports = {
     getUserProfile,
     updateUserProfile,
     getUserReviews,
-    // (інші функції адміна, такі як deleteUser, getUserById, updateUser,
-    // які є у тебе, тут не потрібні для виправлення Account.jsx)
 };

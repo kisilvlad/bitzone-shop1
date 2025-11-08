@@ -7,12 +7,9 @@ const {
     getUserProfile,
     updateUserProfile,
     getUserReviews,
-    // (тут твої функції адміна)
-    // deleteUser,
-    // getUserById,
-    // updateUser
 } = require('../controllers/userController');
-const { protect, admin, authMiddleware } = require('../middleware/authMiddleware');
+// (authMiddleware - це твій 'protect')
+const { authMiddleware, admin } = require('../middleware/authMiddleware');
 
 // !!! ФІКС !!!
 // Account.jsx шукає '/me', а не '/profile'
@@ -23,10 +20,8 @@ router.route('/me')
 // Цей роут вже правильний
 router.get('/me/reviews', authMiddleware, getUserReviews);
 
-// --- (Твої роути адміна, якщо вони є, залишаються) ---
-// router.route('/:id')
-//     .delete(protect, admin, deleteUser)
-//     .get(protect, admin, getUserById)
-//     .put(protect, admin, updateUser);
+// (Тут залиш свої роути для адмінки, якщо вони є)
+// router.route('/').get(authMiddleware, admin, getUsers);
+// ...
 
 module.exports = router;

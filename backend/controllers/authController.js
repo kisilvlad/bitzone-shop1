@@ -1,16 +1,18 @@
 // backend/controllers/authController.js
-// !!! ФІКС: "Лікування" старих користувачів + новий roappApi !!!
+// !!! ФІКС: "Лікування" старих користувачів !!!
 
 const User = require('../models/User');
 const asyncHandler = require('express-async-handler');
 const jwt = require('jsonwebtoken');
-const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУЄМО НОВИЙ ФАЙЛ !!!
+// !!! ВИКОРИСТОВУЄМО НОВИЙ ЦЕНТРАЛІЗОВАНИЙ API !!!
+const roappApi = require('../utils/roappApi');
 
 // --- Функція генерації токена (з roAppId) ---
 const generateToken = (id) => {
-    if (!id) {
-        console.error("Критична помилка: Спроба згенерувати токен без ID");
-        throw new Error('Не вдалося згенерувати токен');
+    // Додаємо перевірку, що ID - це число
+    if (typeof id !== 'number') {
+        console.error(`Критична помилка: Спроба згенерувати токен з не-числовим ID: ${id}`);
+        throw new Error('Не вдалося згенерувати токен (неправильний ID)');
     }
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: '30d',
@@ -26,7 +28,7 @@ const findOrCreateRoAppCustomer = async (user) => {
         });
 
         if (searchResponse.data.data.length > 0) {
-            return searchResponse.data.data[0].id;
+            return searchResponse.data.data[0].id; // Знайшли
         } else {
             // 2. Не знайшли? Створюємо в RoApp
             console.log(`[RoApp] Користувача ${user.phone} не знайдено, створюємо нового...`);
@@ -37,13 +39,14 @@ const findOrCreateRoAppCustomer = async (user) => {
                 email: user.email || '',
             };
             const createCustomerResponse = await roappApi.post('contacts/people', newCustomerPayload);
-            return createCustomerResponse.data.id;
+            return createCustomerResponse.data.id; // Створили
         }
     } catch (error) {
-        console.error(`[RoApp] Помилка при пошуку/створенні клієнта ${user.phone}:`, error.response?.data || error.message);
+        console.error(`[RoApp] Помилка при пошуку/створенні ${user.phone}:`, error.response?.data || error.message);
         throw new Error('Помилка синхронізації з CRM');
     }
 };
+
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -62,15 +65,17 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new Error('Користувач з таким телефоном вже існує');
     }
 
+    // 2. Знаходимо або створюємо RoApp ID
     const roAppId = await findOrCreateRoAppCustomer({
         phone, firstName, lastName, email
     });
 
-    if (!roAppId) {
+    if (typeof roAppId !== 'number') {
         res.status(500);
-        throw new Error('Не вдалося створити клієнта в CRM');
+        throw new Error('Не вдалося створити клієнта в CRM (не отримано ID)');
     }
 
+    // 3. Створюємо Mongoose User
     const user = await User.create({
         name: `${firstName} ${lastName || ''}`.trim(),
         firstName,
@@ -82,6 +87,7 @@ const registerUser = asyncHandler(async (req, res) => {
         roAppId: roAppId 
     });
 
+    // 4. Повертаємо дані
     if (user) {
         res.status(201).json({
             _id: user._id, 
@@ -112,16 +118,17 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     // --- !!! ГОЛОВНЕ "ЛІКУВАННЯ" ТУТ !!! ---
-    if (!user.roAppId) {
+    // 3. Перевіряємо, чи є у старого користувача roAppId
+    if (typeof user.roAppId !== 'number') {
         console.warn(`[FIX] Користувач ${user.phone} не мав roAppId. Виправляємо...`);
         try {
             const roAppId = await findOrCreateRoAppCustomer(user);
-            if (roAppId) {
+            if (typeof roAppId === 'number') {
                 user.roAppId = roAppId;
-                await user.save(); 
+                await user.save(); // Зберігаємо ID в Mongoose
                 console.log(`[FIX] Користувача ${user.phone} вилікувано. Новий roAppId: ${roAppId}`);
             } else {
-                 throw new Error('findOrCreateRoAppCustomer не повернув ID');
+                 throw new Error('findOrCreateRoAppCustomer не повернув числовий ID');
             }
         } catch (error) {
             console.error(`[FIX] Не вдалося "вилікувати" ${user.phone}:`, error.message);
@@ -131,6 +138,7 @@ const loginUser = asyncHandler(async (req, res) => {
     }
     // --- Кінець "лікування" ---
 
+    // 4. Повертаємо дані
     res.json({
         _id: user._id,
         roAppId: user.roAppId,
@@ -138,7 +146,7 @@ const loginUser = asyncHandler(async (req, res) => {
         email: user.email,
         phone: user.phone,
         isAdmin: user.isAdmin,
-        token: generateToken(user.roAppId), 
+        token: generateToken(user.roAppId), // Токен з (тепер гарантованим) roAppId
     });
 });
 
