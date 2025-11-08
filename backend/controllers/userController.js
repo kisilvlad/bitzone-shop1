@@ -9,8 +9,6 @@ const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУ
 // @route   GET /api/users/me
 // @access  Private
 const getUserProfile = asyncHandler(async (req, res) => {
-    // Помилка 500 була через `req.user = null`.
-    // Наш новий `authController` це виправив.
     // Ця функція ПРАВИЛЬНО використовує Mongoose `req.user._id`.
     const user = await User.findById(req.user._id); 
 
@@ -79,8 +77,7 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 // @access  Private
 const getUserReviews = asyncHandler(async (req, res) => {
     // !!! ФІКС !!!
-    // Лог показав, що сюди йшов Mongoose ID (`690...`).
-    // Нам потрібен `roAppId` (число)
+    // Беремо `roAppId` (число)
     const customerId = req.user.roAppId;
 
     console.log(`----- ЗАПИТ ВІДГУКІВ для RoApp ID: ${customerId} -----`);

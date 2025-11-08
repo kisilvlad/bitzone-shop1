@@ -4,7 +4,6 @@
 const asyncHandler = require('express-async-handler');
 const roappApi = require('../utils/roappApi'); // <-- !!! ВИКОРИСТОВУЄМО НОВИЙ ФАЙЛ !!!
 
-// --- ID з твого коду ---
 const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
@@ -23,7 +22,6 @@ const createOrder = asyncHandler(async (req, res) => {
     if (req.user && typeof req.user.roAppId === 'number') {
         customerId = req.user.roAppId;
     } else {
-        // Логіка для "гостей"
         const searchResponse = await roappApi.get('contacts/people', { params: { 'phones[]': customerData.phone } });
         if (searchResponse.data.data.length > 0) {
             customerId = searchResponse.data.data[0].id;
@@ -75,7 +73,6 @@ const getOrderById = asyncHandler(async (req, res) => {
 
     const { data: orderData } = await roappApi.get(`orders/${orderId}`);
     
-    // Перевірка, що це твоє замовлення АБО ти адмін
     if (String(orderData.client_id) !== String(userId) && !isAdmin) {
         res.status(403);
         throw new Error('Доступ заборонено');
@@ -153,18 +150,15 @@ const notifyMe = asyncHandler(async (req, res) => {
 // @route   GET /api/orders
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
-    // Ми очікуємо, що `req.user.roAppId` - це число (навіть 0).
     const userId = req.user.roAppId;
 
     // !!! "ПАРАНОЇДАЛЬНА" ПЕРЕВІРКА !!!
-    // Вона 100% зупинить "витік", якщо ID не є числом.
     if (typeof userId !== 'number') {
         console.error(`Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`);
         res.status(401);
         throw new Error('Не вдалося верифікувати ID користувача для CRM');
     }
 
-    // Тепер ми впевнені, що `userId` - це число, і запит безпечний
     const { data: ordersResponse } = await roappApi.get('orders', {
         params: {
             client_id: userId,
@@ -185,7 +179,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
     res.json(orders);
 });
 
-// --- Експортуємо ВСІ функції ---
 module.exports = { 
     createOrder, 
     getOrderById,

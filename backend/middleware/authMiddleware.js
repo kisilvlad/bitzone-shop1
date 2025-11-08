@@ -1,20 +1,23 @@
 // backend/middleware/authMiddleware.js
-// !!! ГОЛОВНИЙ ФІКС ДЛЯ 401 !!!
+// !!! ФІКС: Шукаємо юзера за roAppId з токена !!!
 
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 
+// Захист маршрутів (обов'язкова авторизація)
 const authMiddleware = asyncHandler(async (req, res, next) => {
     let token;
 
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
             token = req.headers.authorization.split(' ')[1];
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             
+            // Декодуємо токен (очікуємо `{ id: 12345 }`, де id - це roAppId)
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
             // !!! ФІКС !!!
-            // Шукаємо Mongoose-користувача за `roAppId` з токена.
+            // Шукаємо Mongoose-користувача за `roAppId` з токена
             req.user = await User.findOne({ roAppId: decoded.id }).select('-password');
 
             if (!req.user) {
@@ -22,10 +25,6 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
                 throw new Error('Not authorized, token failed (user not found)');
             }
             
-            // !!! ГОЛОВНЕ !!!
-            // Ми БІЛЬШЕ НЕ перезаписуємо req.user.id.
-            // Тепер `req.user` має і `_id` (для Mongoose) і `roAppId` (для RoApp).
-
             next();
         } catch (error) {
             console.error(error);
@@ -40,6 +39,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
     }
 });
 
+// Необов'язкова авторизація (для "гостей")
 const optionalAuthMiddleware = asyncHandler(async (req, res, next) => {
     let token;
 
@@ -50,8 +50,6 @@ const optionalAuthMiddleware = asyncHandler(async (req, res, next) => {
             
             // !!! ФІКС !!! (Та сама логіка)
             req.user = await User.findOne({ roAppId: decoded.id }).select('-password');
-            
-            // (Не перезаписуємо ID)
 
         } catch (error) {
             req.user = null;
@@ -62,7 +60,7 @@ const optionalAuthMiddleware = asyncHandler(async (req, res, next) => {
     next();
 });
 
-// Функція `admin` (правильна, залишаємо)
+// Перевірка на адміна
 const admin = (req, res, next) => {
     if (req.user && req.user.isAdmin) {
         next();
