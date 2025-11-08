@@ -28,18 +28,32 @@ const findOrCreateRoAppCustomer = async (user) => {
             return searchResponse.data.data[0].id; // Знайшли
         } else {
             console.log(`[RoApp] Користувача ${user.phone} не знайдено, створюємо нового...`);
+            
+            // --- !!! ОСНОВНИЙ ФІКС ТУТ !!! ---
+            // Готуємо payload для RoApp
             const newCustomerPayload = {
                 first_name: user.firstName || user.name.split(' ')[0] || 'Клієнт',
                 last_name: user.lastName || user.name.split(' ')[1] || '',
                 phones: [{ "title": "Основний", "phone": user.phone, "notify": false }],
-                email: user.email || '', // Email не обов'язковий
+                // email: user.email || '', // <-- НЕПРАВИЛЬНО. RoApp очікує 'emails' (масив)
             };
+
+            // Додаємо email у ПРАВИЛЬНОМУ форматі, тільки якщо він існує
+            if (user.email) {
+                newCustomerPayload.emails = [
+                    { "title": "Основний", "email": user.email, "notify": false }
+                ];
+            }
+            // --- !!! КІНЕЦЬ ФІКСУ !!! ---
+
             const createCustomerResponse = await roappApi.post('contacts/people', newCustomerPayload);
             return createCustomerResponse.data.id; // Створили
         }
     } catch (error) {
+        // Тепер, якщо помилка все ж буде, ми побачимо її повний текст у логах SSH
         console.error(`[RoApp] Помилка при пошуку/створенні ${user.phone}:`, error.response?.data || error.message);
-        throw new Error('Помилка синхронізації з CRM');
+        // І прокидуємо саме те повідомлення, яке отримали (наприклад, з RoApp)
+        throw new Error(error.response?.data?.message || 'Помилка синхронізації з CRM');
     }
 };
 
