@@ -3,6 +3,7 @@
 const asyncHandler = require('express-async-handler');
 const roappApi = require('../utils/roappApi');
 const Product = require('../models/productModel');
+const User = require('../models/User');
 
 // Константи під твій акаунт ROAPP
 const MY_BRANCH_ID = 212229;
@@ -13,7 +14,21 @@ const MY_ASSIGNEE_ID = 306951;
 
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
+/**
+ * Приводимо айтем з кошика до нормального вигляду
+ * (цей формат використовуємо і при створенні замовлення, і при підрахунках total)
+ */
 const normalizeCartItem = (item) => {
+  if (!item || typeof item !== 'object') {
+    return {
+      name: 'Товар',
+      quantity: 1,
+      price: 0,
+      productId: null,
+      image: null,
+    };
+  }
+
   const quantityRaw = item.qty ?? item.quantity ?? item.count ?? 1;
   const priceRaw =
     item.price ??
@@ -28,12 +43,24 @@ const normalizeCartItem = (item) => {
     item.product_name ??
     'Товар';
 
+  // ID товару в ROAPP (для привʼязки позицій замовлення до продукту)
   const productId =
     item.roappProductId ??
     item.roAppProductId ??
     item.ro_app_product_id ??
+    item.productRoappId ??
+    item.roappId ??
     item.productId ??
     item.product_id ??
+    null;
+
+  const image =
+    item.image ||
+    item.product_image ||
+    item.photo ||
+    item.thumbnail ||
+    (Array.isArray(item.images) &&
+      (item.images[0]?.image || item.images[0])) ||
     null;
 
   const quantity = Number(quantityRaw) > 0 ? Number(quantityRaw) : 1;
@@ -44,9 +71,13 @@ const normalizeCartItem = (item) => {
     quantity,
     price,
     productId,
+    image,
   };
 };
 
+/**
+ * Знаходимо або створюємо клієнта в ROAPP за телефоном
+ */
 const findOrCreateRoAppCustomer = async ({ phone, firstName, lastName, email }) => {
   if (!phone) throw new Error('Немає телефону клієнта для створення контакту');
 
@@ -95,6 +126,9 @@ const findOrCreateRoAppCustomer = async ({ phone, firstName, lastName, email }) 
   }
 };
 
+/**
+ * Формуємо текстовий коментар до замовлення з даних форми checkout
+ */
 const buildOrderComment = (customer) => {
   const parts = [];
 
@@ -112,30 +146,24 @@ const buildOrderComment = (customer) => {
   return parts.join(' | ');
 };
 
-// map items from ROAPP + підтягнути товари з нашої БД по roappId
+/**
+ * Мапимо айтеми замовлення з ROAPP на формат фронтенда
+ * + підтягування картинок / назв із локальної колекції Product
+ */
 const mapItemsWithProducts = async (itemsRaw) => {
   if (!Array.isArray(itemsRaw) || !itemsRaw.length) return [];
 
-  // 1) Збираємо всі можливі roappId товарів (і з плоских, і з вкладених полів)
   const roappIdsSet = new Set();
   for (const it of itemsRaw) {
-    const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
-
     const pid =
       it.product_id ??
       it.productId ??
       it.entity_id ??
       it.product_id_roapp ??
-      (productObj && (productObj.id || productObj.product_id || productObj.entity_id)) ??
       null;
-
-    if (pid != null) {
-      const num = Number(pid);
-      if (!Number.isNaN(num)) roappIdsSet.add(num);
-    }
+    if (pid != null) roappIdsSet.add(Number(pid));
   }
 
-  // 2) Підтягуємо товари з нашої БД за roappId
   let productsByRoappId = {};
   if (roappIdsSet.size) {
     try {
@@ -149,39 +177,31 @@ const mapItemsWithProducts = async (itemsRaw) => {
         products.map((p) => [String(p.roappId), p])
       );
     } catch (err) {
-      console.error('[Orders] Не вдалося підтягнути товари з Mongo по roappId:', err.message);
+      console.error('[mapItemsWithProducts] DB error:', err.message);
     }
   }
 
-  // 3) Формуємо фінальний масив айтемів з нормалізованими name / image / price / qty
   return itemsRaw.map((it) => {
-    const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
-
-    const productRoappIdRaw =
+    const productRoappId =
       it.product_id ??
       it.productId ??
       it.entity_id ??
       it.product_id_roapp ??
-      (productObj && (productObj.id || productObj.product_id || productObj.entity_id)) ??
       null;
 
-    const productRoappId =
-      productRoappIdRaw != null && !Number.isNaN(Number(productRoappIdRaw))
-        ? Number(productRoappIdRaw)
+    const productDoc =
+      productRoappId != null
+        ? productsByRoappId[String(Number(productRoappId))]
         : null;
 
-    const productDoc =
-      productRoappId != null ? productsByRoappId[String(productRoappId)] || null : null;
-
-    const qty = Number(it.quantity ?? it.qty ?? it.count ?? 1) || 1;
+    const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
     const price =
       Number(
         it.price ??
           it.unit_price ??
           it.unitPrice ??
-          it.total_price ??
-          it.totalPrice ??
-          it.amount
+          it.total ??
+          0
       ) || 0;
 
     const name =
@@ -189,38 +209,32 @@ const mapItemsWithProducts = async (itemsRaw) => {
       it.title ||
       it.product_name ||
       it.productTitle ||
-      (productObj && (productObj.title || productObj.name || productObj.product_name)) ||
       (productDoc && productDoc.name) ||
       'Товар';
 
-    const imageFromProductDoc =
-      productDoc &&
-      (productDoc.mainImage ||
+    let image = null;
+    if (productDoc) {
+      image =
+        productDoc.mainImage ||
         productDoc.image ||
         productDoc.coverImage ||
-        (Array.isArray(productDoc.images) && productDoc.images[0]) ||
-        productDoc.thumbnail);
-
-    const imageFromProductObj =
-      productObj &&
-      (productObj.image ||
-        (Array.isArray(productObj.images) &&
-          (productObj.images[0]?.image || productObj.images[0])) ||
-        productObj.thumbnail ||
-        productObj.photo);
-
-    const image =
-      imageFromProductDoc ||
-      it.image ||
-      it.product_image ||
-      it.photo ||
-      it.thumbnail ||
-      imageFromProductObj ||
-      null;
+        productDoc.thumbnail ||
+        (Array.isArray(productDoc.images) &&
+          (productDoc.images[0]?.image || productDoc.images[0])) ||
+        null;
+    }
+    if (!image) {
+      image =
+        it.image ||
+        it.photo ||
+        it.thumbnail ||
+        (Array.isArray(it.images) &&
+          (it.images[0]?.image || it.images[0])) ||
+        null;
+    }
 
     return {
-      id: it.id ?? it.item_id ?? it._id,
-      productRoappId,
+      productRoappId: productRoappId != null ? Number(productRoappId) : null,
       name,
       image,
       quantity: qty,
@@ -228,7 +242,6 @@ const mapItemsWithProducts = async (itemsRaw) => {
     };
   });
 };
-
 
 /* ===================== controllers ===================== */
 
@@ -276,6 +289,19 @@ const createOrder = asyncHandler(async (req, res) => {
       lastName,
       email,
     });
+
+    // Якщо користувач залогінений – зберігаємо clientId в User.roAppId
+    if (req.user && clientId) {
+      try {
+        const userDoc = await User.findById(req.user._id);
+        if (userDoc) {
+          userDoc.roAppId = clientId;
+          await userDoc.save();
+        }
+      } catch (err) {
+        console.error('[createOrder] save user roAppId error:', err.message);
+      }
+    }
   }
 
   let createdOrder;
@@ -346,6 +372,7 @@ const createOrder = asyncHandler(async (req, res) => {
     createdAt: createdOrder.created_at || new Date().toISOString(),
     total: createdOrder.total_sum || totalFromCart,
     status: createdOrder.status ? createdOrder.status.title || 'В обробці' : 'В обробці',
+    itemsCreated: successItems,
   });
 });
 
@@ -375,11 +402,15 @@ const getOrderById = asyncHandler(async (req, res) => {
       const people = Array.isArray(data?.data) ? data.data : [];
       if (people.length) {
         clientId = people[0].id;
+        // зберігаємо в користувача
         try {
-          user.roAppId = clientId;
-          if (typeof user.save === 'function') await user.save();
+          const userDoc = await User.findById(user._id);
+          if (userDoc) {
+            userDoc.roAppId = clientId;
+            await userDoc.save();
+          }
         } catch (err) {
-          console.error('[getOrderById] user save roAppId error:', err.message);
+          console.error('[getOrderById] save user roAppId error:', err.message);
         }
       }
     } catch (err) {
@@ -402,7 +433,7 @@ const getOrderById = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося отримати замовлення.');
   }
 
-  // 3. Визначаємо client_id для замовлення
+  // 3. Перевіряємо, що замовлення належить поточному користувачу (якщо він не адмін)
   const rawClientId =
     orderData.client_id ??
     orderData.clientId ??
@@ -411,45 +442,60 @@ const getOrderById = asyncHandler(async (req, res) => {
     orderData.customer_id ??
     null;
 
-  // 4. Перевірка доступу
-  if (!isAdmin && clientId && rawClientId && String(clientId) !== String(rawClientId)) {
-    res.status(403);
-    throw new Error('У вас немає доступу до цього замовлення.');
+  if (!isAdmin) {
+    if (!clientId || !rawClientId || String(clientId) !== String(rawClientId)) {
+      res.status(403);
+      throw new Error('Немає доступу до цього замовлення.');
+    }
   }
 
-  // 5. Тягнемо позиції
+  // 4. Підтягуємо айтеми замовлення
   let itemsRaw = [];
   try {
-    const { data } = await roappApi.get(`orders/${orderId}/items`);
-    if (Array.isArray(data?.data)) itemsRaw = data.data;
-    else if (Array.isArray(data)) itemsRaw = data;
+    const resp = await roappApi.get(`orders/${orderId}/items`);
+    itemsRaw = Array.isArray(resp?.data?.data)
+      ? resp.data.data
+      : Array.isArray(resp?.data)
+      ? resp.data
+      : [];
   } catch (err) {
     console.error('[ROAPP] getOrderById items error:', err?.response?.data || err.message);
   }
 
   const items = await mapItemsWithProducts(itemsRaw);
 
-  const totalFromItems = items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const totalFromItems = items.reduce(
+    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+    0
+  );
 
   const statusObj = orderData.status || {};
-  const statusTitle = statusObj.title || statusObj.name || 'В обробці';
+  let statusTitle = 'В обробці';
+  let statusColor = '#888888';
+
+  if (typeof statusObj === 'string') {
+    statusTitle = statusObj;
+  } else if (statusObj && typeof statusObj === 'object') {
+    statusTitle = statusObj.title || statusObj.name || statusTitle;
+    statusColor = statusObj.color || statusColor;
+  }
 
   const result = {
-    id: orderData.id,
+    id: orderData.id || orderId,
     createdAt:
       orderData.created_at ||
+      orderData.date ||
       orderData.createdAt ||
-      orderData.created_at_iso ||
       null,
     total:
-      orderData.total_sum ??
-      orderData.total ??
-      orderData.totalSum ??
-      orderData.amount ??
-      orderData.sum ??
-      totalFromItems,
+      Number(
+        orderData.total_sum ??
+          orderData.total ??
+          orderData.amount ??
+          totalFromItems
+      ) || totalFromItems,
     status: statusTitle,
-    statusColor: statusObj.color || '#888888',
+    statusColor,
     items,
   };
 
@@ -474,6 +520,9 @@ const notifyMe = asyncHandler(async (req, res) => {
     productName,
     phone,
   });
+
+  // Тут за бажанням можна створювати Task / Inquiry в ROAPP.
+  // Поки що просто відповідаємо 200, щоб фронт показав успішне повідомлення.
 
   res
     .status(200)
@@ -503,10 +552,13 @@ const getMyOrders = asyncHandler(async (req, res) => {
       if (people.length) {
         clientId = people[0].id;
         try {
-          user.roAppId = clientId;
-          if (typeof user.save === 'function') await user.save();
+          const userDoc = await User.findById(user._id);
+          if (userDoc) {
+            userDoc.roAppId = clientId;
+            await userDoc.save();
+          }
         } catch (err) {
-          console.error('[getMyOrders] user save roAppId error:', err.message);
+          console.error('[getMyOrders] save user roAppId error:', err.message);
         }
       }
     } catch (err) {
@@ -515,95 +567,93 @@ const getMyOrders = asyncHandler(async (req, res) => {
   }
 
   if (!clientId) {
-    console.warn('[getMyOrders] Не вдалося визначити clientId:', {
-      userId: user._id,
-      roAppId: user.roAppId,
-      phone: user.phone,
-    });
+    // Немає привʼязки користувача до контактів ROAPP – повертаємо порожній список
     return res.json([]);
   }
 
-  // 1. Тягнемо всі замовлення (наприклад останні 50)
+  // 1. Тягуємо всі замовлення для цього client_id
   let allOrdersRaw = [];
   try {
-    const { data: raw } = await roappApi.get('orders', {
+    const resp = await roappApi.get('orders', {
       params: {
-        sort: '-created_at',
-        pageSize: 50,
+        client_id: clientId,
+        branch_id: MY_BRANCH_ID,
       },
     });
 
-    if (Array.isArray(raw?.data)) allOrdersRaw = raw.data;
-    else if (Array.isArray(raw)) allOrdersRaw = raw;
-    else console.warn('[getMyOrders] unexpected orders format:', raw);
+    if (Array.isArray(resp?.data?.data)) {
+      allOrdersRaw = resp.data.data;
+    } else if (Array.isArray(resp?.data)) {
+      allOrdersRaw = resp.data;
+    } else {
+      console.warn('[getMyOrders] unexpected orders format:', resp?.data);
+    }
   } catch (err) {
     console.error('[getMyOrders] get orders error:', err?.response?.data || err.message);
     res.status(500);
     throw new Error('Не вдалося завантажити історію замовлень.');
   }
 
-  // 2. Фільтруємо по client_id
-  const myOrdersRaw = allOrdersRaw.filter((order) => {
-    const rawClientId =
-      order.client_id ??
-      order.clientId ??
-      (order.client && (order.client.id || order.client.person_id)) ??
-      order.person_id ??
-      order.customer_id;
-
-    return rawClientId != null && String(rawClientId) === String(clientId);
-  });
-
-  // 3. Для кожного замовлення підтягуємо items
+  // 2. Для кожного замовлення підтягуємо items
   const ordersWithItems = await Promise.all(
-    myOrdersRaw.map(async (order) => {
+    allOrdersRaw.map(async (order) => {
       let itemsRaw = [];
       try {
-        const { data } = await roappApi.get(`orders/${order.id}/items`);
-        if (Array.isArray(data?.data)) itemsRaw = data.data;
-        else if (Array.isArray(data)) itemsRaw = data;
+        const itemsResp = await roappApi.get(`orders/${order.id}/items`);
+        itemsRaw = Array.isArray(itemsResp?.data?.data)
+          ? itemsResp.data.data
+          : Array.isArray(itemsResp?.data)
+          ? itemsResp.data
+          : [];
       } catch (err) {
-        console.error('[getMyOrders] get items for order error:', {
-          orderId: order.id,
-          error: err?.response?.data || err.message,
-        });
+        console.error('[getMyOrders] get order items error:', err?.response?.data || err.message);
       }
+
       const items = await mapItemsWithProducts(itemsRaw);
 
-      const totalFromItems = items.reduce((s, i) => s + i.price * i.quantity, 0);
+      const totalFromItems = items.reduce(
+        (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+        0
+      );
 
       const statusObj = order.status || {};
-      const statusTitle = statusObj.title || statusObj.name || 'В обробці';
+      let statusTitle = 'В обробці';
+      let statusColor = '#888888';
 
-      const isPaid =
-        statusTitle === 'Оплачено' ||
-        statusTitle === 'Виконано' ||
-        statusTitle === 'Paid' ||
-        statusTitle === 'Completed';
-
-      const isDelivered =
-        statusTitle === 'Виконано' ||
-        statusTitle === 'Delivered' ||
-        statusTitle === 'Complete';
+      if (typeof statusObj === 'string') {
+        statusTitle = statusObj;
+      } else if (statusObj && typeof statusObj === 'object') {
+        statusTitle = statusObj.title || statusObj.name || statusTitle;
+        statusColor = statusObj.color || statusColor;
+      }
 
       return {
         id: order.id,
-        createdAt: order.created_at || order.createdAt || order.created_at_iso,
+        createdAt:
+          order.created_at ||
+          order.date ||
+          order.createdAt ||
+          null,
         total:
-          order.total_sum ??
-          order.total ??
-          order.totalSum ??
-          order.amount ??
-          order.sum ??
-          totalFromItems,
+          Number(
+            order.total_sum ??
+              order.total ??
+              order.amount ??
+              totalFromItems
+          ) || totalFromItems,
         status: statusTitle,
-        statusColor: statusObj.color || '#888888',
-        isPaid,
-        isDelivered,
+        statusColor,
         items,
       };
     })
   );
+
+  // 3. Сортуємо від нових до старих
+  ordersWithItems.sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  });
 
   res.json(ordersWithItems);
 });
