@@ -116,17 +116,26 @@ const buildOrderComment = (customer) => {
 const mapItemsWithProducts = async (itemsRaw) => {
   if (!Array.isArray(itemsRaw) || !itemsRaw.length) return [];
 
+  // 1) Збираємо всі можливі roappId товарів (і з плоских, і з вкладених полів)
   const roappIdsSet = new Set();
   for (const it of itemsRaw) {
+    const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
+
     const pid =
       it.product_id ??
       it.productId ??
       it.entity_id ??
       it.product_id_roapp ??
+      (productObj && (productObj.id || productObj.product_id || productObj.entity_id)) ??
       null;
-    if (pid != null) roappIdsSet.add(Number(pid));
+
+    if (pid != null) {
+      const num = Number(pid);
+      if (!Number.isNaN(num)) roappIdsSet.add(num);
+    }
   }
 
+  // 2) Підтягуємо товари з нашої БД за roappId
   let productsByRoappId = {};
   if (roappIdsSet.size) {
     try {
@@ -144,25 +153,35 @@ const mapItemsWithProducts = async (itemsRaw) => {
     }
   }
 
+  // 3) Формуємо фінальний масив айтемів з нормалізованими name / image / price / qty
   return itemsRaw.map((it) => {
-    const productRoappId =
+    const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
+
+    const productRoappIdRaw =
       it.product_id ??
       it.productId ??
       it.entity_id ??
       it.product_id_roapp ??
+      (productObj && (productObj.id || productObj.product_id || productObj.entity_id)) ??
       null;
 
-    const productDoc = productRoappId != null ? productsByRoappId[String(Number(productRoappId))] : null;
+    const productRoappId =
+      productRoappIdRaw != null && !Number.isNaN(Number(productRoappIdRaw))
+        ? Number(productRoappIdRaw)
+        : null;
 
-    const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
+    const productDoc =
+      productRoappId != null ? productsByRoappId[String(productRoappId)] || null : null;
+
+    const qty = Number(it.quantity ?? it.qty ?? it.count ?? 1) || 1;
     const price =
       Number(
         it.price ??
-        it.unit_price ??
-        it.unitPrice ??
-        it.total_price ??
-        it.totalPrice ??
-        it.amount
+          it.unit_price ??
+          it.unitPrice ??
+          it.total_price ??
+          it.totalPrice ??
+          it.amount
       ) || 0;
 
     const name =
@@ -170,25 +189,38 @@ const mapItemsWithProducts = async (itemsRaw) => {
       it.title ||
       it.product_name ||
       it.productTitle ||
+      (productObj && (productObj.title || productObj.name || productObj.product_name)) ||
       (productDoc && productDoc.name) ||
       'Товар';
 
+    const imageFromProductDoc =
+      productDoc &&
+      (productDoc.mainImage ||
+        productDoc.image ||
+        productDoc.coverImage ||
+        (Array.isArray(productDoc.images) && productDoc.images[0]) ||
+        productDoc.thumbnail);
+
+    const imageFromProductObj =
+      productObj &&
+      (productObj.image ||
+        (Array.isArray(productObj.images) &&
+          (productObj.images[0]?.image || productObj.images[0])) ||
+        productObj.thumbnail ||
+        productObj.photo);
+
     const image =
-      (productDoc &&
-        (productDoc.mainImage ||
-          productDoc.image ||
-          productDoc.coverImage ||
-          (Array.isArray(productDoc.images) && productDoc.images[0]) ||
-          productDoc.thumbnail)) ||
+      imageFromProductDoc ||
       it.image ||
       it.product_image ||
       it.photo ||
       it.thumbnail ||
+      imageFromProductObj ||
       null;
 
     return {
-      id: it.id,
-      productRoappId: productRoappId != null ? Number(productRoappId) : null,
+      id: it.id ?? it.item_id ?? it._id,
+      productRoappId,
       name,
       image,
       quantity: qty,
@@ -196,6 +228,7 @@ const mapItemsWithProducts = async (itemsRaw) => {
     };
   });
 };
+
 
 /* ===================== controllers ===================== */
 
