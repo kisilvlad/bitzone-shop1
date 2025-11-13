@@ -177,11 +177,11 @@ const mapItemsWithProducts = async (itemsRaw) => {
     const price =
       Number(
         it.price ??
-        it.unit_price ??
-        it.unitPrice ??
-        it.total_price ??
-        it.totalPrice ??
-        it.amount
+          it.unit_price ??
+          it.unitPrice ??
+          it.total_price ??
+          it.totalPrice ??
+          it.amount
       ) || 0;
 
     const name =
@@ -278,7 +278,6 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  // 1. Створюємо замовлення в ROAPP (без позицій)
   let createdOrder;
   try {
     const { data } = await roappApi.post('orders', {
@@ -309,60 +308,30 @@ const createOrder = asyncHandler(async (req, res) => {
 
   const orderId = createdOrder.id;
 
-  // 2. Додаємо позиції до замовлення
   let successItems = 0;
 
+  // Додаємо позиції в ROAPP
   for (const rawItem of cartItems) {
-    // Базова нормалізація з фронта
     const item = normalizeCartItem(rawItem);
 
-    // 🔎 Додатково пробуємо знайти товар у нашій БД,
-    // щоб дістати roappId, якщо його немає в item.productId
-    if (!item.productId) {
-      try {
-        const possibleMongoId =
-          rawItem.productMongoId ??
-          rawItem._id ??
-          rawItem.id ??
-          (rawItem.product && (rawItem.product._id || rawItem.product.id));
-
-        if (possibleMongoId) {
-          const productDoc = await Product.findById(possibleMongoId).lean();
-          if (productDoc) {
-            if (productDoc.roappId) {
-              item.productId = productDoc.roappId;
-            }
-            if (!item.name && productDoc.name) {
-              item.name = productDoc.name;
-            }
-            if (!item.price && typeof productDoc.price === 'number') {
-              item.price = productDoc.price;
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[ROAPP] createOrder: lookup Product by Mongo _id error:', err.message);
+    // product_id для ROAPP: очікується числовий ID продукту з ROAPP
+    let roappProductId = null;
+    if (item.productId != null) {
+      const num = Number(item.productId);
+      if (!Number.isNaN(num) && num > 0) {
+        roappProductId = num;
       }
     }
 
-    // Гарантуємо, що є хоч якісь адекватні значення
-    const safeName = item.name || 'Товар';
-    const safeQty = item.quantity > 0 ? item.quantity : 1;
-    const safePrice = item.price >= 0 ? item.price : 0;
-
-    // ⚙️ Формуємо payload максимально дружній до ROAPP
     const payload = {
-      title: safeName,
-      quantity: safeQty,
-      // даємо обидва поля, щоб точно потрапити в їхню схему
-      price: safePrice,
-      unit_price: safePrice,
+      title: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      unit_price: item.price,
     };
 
-    if (item.productId) {
-      // Якщо знаємо roapp product_id – вказуємо його,
-      // тоді ROAPP звʼяже позицію з каталогом.
-      payload.product_id = item.productId;
+    if (roappProductId) {
+      payload.product_id = roappProductId;
     }
 
     try {
@@ -377,14 +346,17 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
+  if (successItems === 0) {
+    console.warn('[ROAPP] createOrder: жодна позиція не була успішно додана до замовлення', {
+      orderId,
+      cartItemsCount: cartItems.length,
+    });
+  }
+
   const totalFromCart = cartItems.reduce((sum, i) => {
     const norm = normalizeCartItem(i);
     return sum + norm.price * norm.quantity;
   }, 0);
-
-  // Якщо з якоїсь причини жодну позицію не вдалося додати –
-  // замовлення все одно існує, але буде пустим в ROAPP.
-  // На фронті ти це побачиш і по логах зможеш подивитись помилки.
 
   res.status(201).json({
     id: orderId,
