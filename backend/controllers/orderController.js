@@ -128,7 +128,7 @@ const buildOrderComment = (customerData) => {
 /* =========================================================
    @desc    Створити нове замовлення
    @route   POST /api/orders
-   @access  Public / Optional Auth (див. routes)
+   @access  Public / Optional Auth
    ========================================================= */
 const createOrder = asyncHandler(async (req, res) => {
   const { customerData, cartItems } = req.body;
@@ -215,7 +215,6 @@ const createOrder = asyncHandler(async (req, res) => {
 
     try {
       const payload = {
-        // даємо і name, і title – API візьме те, що йому треба
         title: item.name,
         name: item.name,
         quantity: item.quantity,
@@ -243,7 +242,7 @@ const createOrder = asyncHandler(async (req, res) => {
 
   if (successItems === 0) {
     console.warn(
-      `[ROAPP] Жодна позиція не була додана до замовлення ${orderId}. Перевір payload для /orders/{id}/items в документації ROAPP.`
+      `[ROAPP] Жодна позиція не була додана до замовлення ${orderId}.`
     );
   }
 
@@ -267,14 +266,45 @@ const createOrder = asyncHandler(async (req, res) => {
    ========================================================= */
 const getOrderById = asyncHandler(async (req, res) => {
   const orderId = req.params.id;
-  const userRoId = req.user && req.user.roAppId;
+  const user = req.user;
 
-  if (!userRoId) {
+  if (!user) {
     res.status(401);
-    throw new Error('Не вдалося ідентифікувати користувача.');
+    throw new Error('Необхідна авторизація.');
   }
 
-  // 1) загальна інформація по замовленню
+  const isAdmin = !!user.isAdmin;
+
+  // 1) Підтягуємо / відновлюємо clientId для користувача
+  let clientId = user.roAppId || null;
+
+  if (!clientId && user.phone) {
+    const normalizedPhone = normalizePhone(user.phone);
+    try {
+      const { data } = await roappApi.get('contacts/people', {
+        params: { 'phones[]': normalizedPhone },
+      });
+      const people = Array.isArray(data?.data) ? data.data : [];
+      if (people.length) {
+        clientId = people[0].id;
+        try {
+          user.roAppId = clientId;
+          if (typeof user.save === 'function') {
+            await user.save();
+          }
+        } catch (err) {
+          console.error('[getOrderById] Не вдалося зберегти roAppId користувача:', err.message);
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[getOrderById] Помилка пошуку клієнта по телефону:',
+        err?.response?.data || err.message
+      );
+    }
+  }
+
+  // 2) Тягуємо замовлення з ROAPP
   let orderData;
   try {
     const { data } = await roappApi.get(`orders/${orderId}`);
@@ -292,17 +322,34 @@ const getOrderById = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося отримати замовлення.');
   }
 
-  // 2) перевіряємо, що це замовлення цього користувача
-  if (String(orderData.client_id) !== String(userRoId)) {
+  // 3) Визначаємо client_id для замовлення
+  const rawClientId =
+    orderData.client_id ??
+    orderData.clientId ??
+    (orderData.client && (orderData.client.id || orderData.client.person_id)) ??
+    orderData.person_id ??
+    orderData.customer_id ??
+    null;
+
+  // 4) Перевірка доступу (мʼякша, ніж раніше)
+  if (!isAdmin && clientId && rawClientId && String(clientId) !== String(rawClientId)) {
+    console.warn(
+      `[getOrderById] Користувач ${user._id} з roAppId=${clientId} намагається отримати замовлення ${orderId} клієнта ${rawClientId}`
+    );
     res.status(403);
     throw new Error('У вас немає доступу до цього замовлення.');
   }
+  // Якщо clientId або rawClientId відсутні – не ріжемо, щоб не ламати історичні замовлення / гостьові.
 
-  // 3) позиції замовлення
+  // 5) Тягуємо items
   let items = [];
   try {
     const { data } = await roappApi.get(`orders/${orderId}/items`);
-    items = Array.isArray(data?.data) ? data.data : [];
+    if (Array.isArray(data?.data)) {
+      items = data.data;
+    } else if (Array.isArray(data)) {
+      items = data;
+    }
   } catch (err) {
     console.error(
       '[ROAPP] Помилка отримання позицій замовлення:',
@@ -318,14 +365,30 @@ const getOrderById = asyncHandler(async (req, res) => {
     image: it.image || it.product_image || '/assets/images/placeholder-product.png',
   }));
 
+  const totalFromItems = mappedItems.reduce(
+    (s, i) => s + i.price * i.quantity,
+    0
+  );
+
+  const statusObj = orderData.status || {};
+  const statusTitle = statusObj.title || statusObj.name || 'В обробці';
+
   const result = {
     id: orderData.id,
-    createdAt: orderData.created_at,
+    createdAt:
+      orderData.created_at ||
+      orderData.createdAt ||
+      orderData.created_at_iso ||
+      null,
     total:
-      orderData.total_sum ||
-      mappedItems.reduce((s, i) => s + i.price * i.quantity, 0),
-    status: orderData.status ? orderData.status.title : 'В обробці',
-    statusColor: orderData.status ? orderData.status.color : '#888888',
+      orderData.total_sum ??
+      orderData.total ??
+      orderData.totalSum ??
+      orderData.amount ??
+      orderData.sum ??
+      totalFromItems,
+    status: statusTitle,
+    statusColor: statusObj.color || '#888888',
     items: mappedItems,
   };
 
@@ -338,7 +401,6 @@ const getOrderById = asyncHandler(async (req, res) => {
    @access  Private
    ========================================================= */
 const updateOrderToPaid = asyncHandler(async (req, res) => {
-  // Тут за бажанням можна дернути Update Order Status в ROAPP
   res.json({ message: 'Статус оплати оброблено (поки що без інтеграції з ROAPP).' });
 });
 
@@ -387,7 +449,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
       if (people.length) {
         clientId = people[0].id;
 
-        // пробуємо зберегти в юзера (якщо це Mongoose-документ)
         try {
           user.roAppId = clientId;
           if (typeof user.save === 'function') {
@@ -411,7 +472,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
       roAppId: user.roAppId,
       phone: user.phone,
     });
-    return res.json([]); // Поки що просто повертаємо пусто, без 500
+    return res.json([]);
   }
 
   // 1) тягнемо список замовлень
@@ -419,9 +480,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
   try {
     const { data: raw } = await roappApi.get('orders', {
       params: {
-        // За документацією є фільтрація по Clients IDs / Phones.
-        // Коли точно знатимеш імʼя параметра — можна раскоментувати й підставити:
-        // 'clients_ids[]': clientId,
         sort: '-created_at',
         pageSize: 100,
       },
@@ -443,29 +501,48 @@ const getMyOrders = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося завантажити історію замовлень.');
   }
 
-  // 2) Додатково фільтруємо по client_id (на випадок, якщо API не відфільтрувало)
+  // 2) Фільтруємо по client_id
   const myOrdersRaw = allOrdersRaw.filter((order) => {
     const rawClientId =
       order.client_id ??
       order.clientId ??
-      (order.client && (order.client.id || order.client.person_id));
+      (order.client && (order.client.id || order.client.person_id)) ??
+      order.person_id ??
+      order.customer_id;
 
     return rawClientId != null && String(rawClientId) === String(clientId);
   });
 
-  // 3) Приводимо до формату, який очікує фронт (Account.jsx)
+  // 3) Приводимо до формату, який очікує фронт
   const orders = myOrdersRaw.map((order) => {
     const statusObj = order.status || {};
     const statusTitle = statusObj.title || statusObj.name || 'В обробці';
 
+    const isPaid =
+      statusTitle === 'Оплачено' ||
+      statusTitle === 'Виконано' ||
+      statusTitle === 'Paid' ||
+      statusTitle === 'Completed';
+
+    const isDelivered =
+      statusTitle === 'Виконано' ||
+      statusTitle === 'Delivered' ||
+      statusTitle === 'Complete';
+
     return {
       id: order.id,
       createdAt: order.created_at || order.createdAt || order.created_at_iso,
-      total: order.total_sum ?? order.total ?? 0,
+      total:
+        order.total_sum ??
+        order.total ??
+        order.totalSum ??
+        order.amount ??
+        order.sum ??
+        0,
       status: statusTitle,
       statusColor: statusObj.color || '#888888',
-      isPaid: ['Оплачено', 'Виконано'].includes(statusTitle),
-      isDelivered: statusTitle === 'Виконано',
+      isPaid,
+      isDelivered,
     };
   });
 
