@@ -63,6 +63,7 @@ const authLimiter = rateLimit({
 });
 
 // ---------- МАРШРУТИ (як і було) ----------
+app.use("/api/novapost", require("./routes/novaPostRoutes"));
 app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
