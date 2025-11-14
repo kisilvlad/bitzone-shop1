@@ -332,9 +332,7 @@ const createOrder = asyncHandler(async (req, res) => {
       continue; // пропускаємо цю позицію, але не валимо все замовлення
     }
 
-    // ================== ПОЧАТОК ВИПРАВЛЕННЯ ==================
-    // API ROAPP вимагає повну структуру для discount та warranty,
-    // навіть якщо вони нульові. Надсилання {} спричиняє помилку 400.
+    // ================== ПОЧАТОК ВИПРАВЛЕННЯ v2 ==================
     const payload = {
       title: normalized.name,
       quantity: normalized.quantity,
@@ -343,17 +341,17 @@ const createOrder = asyncHandler(async (req, res) => {
       price: normalized.price,
       cost: normalized.price,
       discount: {
-        type: 'percent', // 'percent' або 'fixed'
+        type: 'percentage', // ВИПРАВЛЕНО: 'percent' -> 'percentage' згідно логу
         value: 0,
         percent: 0,
-        currency_id: 0, // 0 або null, залежно від вимог API (0 безпечніше)
+        currency_id: null, // Ставимо null замість 0, це безпечніше
       },
       warranty: {
-        type: 'month', // 'day', 'month', 'year'
-        value: 0,
+        period: 0, // ВИПРАВЛЕНО: 'type' -> 'period' (припущення)
+        unit: 'month', // ВИПРАВЛЕНО: 'value' -> 'unit' (припущення)
       },
     };
-    // =================== КІНЕЦЬ ВИПРАВЛЕННЯ ===================
+    // =================== КІНЕЦЬ ВИПРАВЛЕННЯ v2 ===================
 
     try {
       await roappApi.post(`orders/${orderId}/items`, payload);
