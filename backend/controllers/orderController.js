@@ -278,6 +278,7 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
+  // 1. Створюємо саме замовлення в ROAPP (без позицій)
   let createdOrder;
   try {
     const { data } = await roappApi.post('orders', {
@@ -307,70 +308,57 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   const orderId = createdOrder.id;
-
   let successItems = 0;
 
-  // Додаємо позиції в замовлення ROAPP
+  // 2. Додаємо позиції до замовлення
   for (const cartItem of cartItems) {
     const normalized = normalizeCartItem(cartItem);
 
-    // Спробувати визначити entity_id (ід товару/сутності в ROAPP)
-    let entityId = null;
+    // entity_id — це ID товару/послуги в ROAPP
+    // У твоєму випадку в кошику приходить id з ROAPP (типу 57046648)
+    // Тому беремо саме його
+    const entityIdRaw =
+      cartItem.id ??
+      cartItem.roappProductId ??
+      cartItem.roAppProductId ??
+      cartItem.ro_app_product_id ??
+      normalized.productId ??
+      null;
 
-    // З фронта ти отримуєш id, який є entity_id ROAPP (як видно з логів: 57046648 тощо)
-    if (cartItem.id && !Number.isNaN(Number(cartItem.id))) {
-      entityId = Number(cartItem.id);
-    } else if (normalized.productId && !Number.isNaN(Number(normalized.productId))) {
-      entityId = Number(normalized.productId);
-    }
+    const entityId =
+      entityIdRaw != null && !Number.isNaN(Number(entityIdRaw))
+        ? Number(entityIdRaw)
+        : null;
 
     if (!entityId) {
       console.error('[ROAPP] createOrder: не вдалося визначити entity_id для позиції', {
         cartItem,
         normalized,
       });
-      continue; // пропускаємо цю позицію, але не валимо все замовлення
+      continue;
     }
 
-    // ================== ПОЧАТОК ВИПРАВЛЕННЯ v2 ==================
+    // ВАЖЛИВО:
+    // Не шлемо price/cost/discount/warranty – ROAPP сам підтягне їх із товару за entity_id
     const payload = {
-      title: normalized.name,
+      entity_id: entityId,
       quantity: normalized.quantity,
       assignee_id: MY_ASSIGNEE_ID,
-      entity_id: entityId,
-      price: normalized.price,
-      cost: normalized.price,
-      discount: {
-        type: 'percentage', // ВИПРАВЛЕНО: 'percent' -> 'percentage' згідно логу
-        value: 0,
-        percent: 0,
-        currency_id: null, // Ставимо null замість 0, це безпечніше
-      },
-      warranty: {
-        period: 0, // ВИПРАВЛЕНО: 'type' -> 'period' (припущення)
-        unit: 'month', // ВИПРАВЛЕНО: 'value' -> 'unit' (припущення)
-      },
     };
-    // =================== КІНЕЦЬ ВИПРАВЛЕННЯ v2 ===================
 
     try {
       await roappApi.post(`orders/${orderId}/items`, payload);
       successItems += 1;
     } catch (err) {
-      const errorJson = (() => {
-        try {
-          return JSON.stringify(err?.response?.data || {}, null, 2);
-        } catch {
-          return null;
-        }
-      })();
+      const status = err?.response?.status;
+      const errorBody = err?.response?.data || err.message;
 
       console.error('[ROAPP] add item to order error:', {
         orderId,
         payload,
-        status: err?.response?.status,
-        error: err?.response?.data || err.message,
-        errorJson,
+        status,
+        error: errorBody,
+        errorJson: typeof errorBody === 'object' ? JSON.stringify(errorBody, null, 2) : null,
       });
     }
   }
