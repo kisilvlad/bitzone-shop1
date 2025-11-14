@@ -13,6 +13,10 @@ const MY_ASSIGNEE_ID = 306951;
 
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
+/**
+ * Нормалізація товару з кошика
+ * Головне – коректно дістати roapp product id
+ */
 const normalizeCartItem = (item) => {
   const quantityRaw = item.qty ?? item.quantity ?? item.count ?? 1;
   const priceRaw =
@@ -28,13 +32,30 @@ const normalizeCartItem = (item) => {
     item.product_name ??
     'Товар';
 
-  const productId =
+  // 🔥 ГОЛОВНЕ МІСЦЕ: шукаємо roapp ID з усіх можливих полів
+  const productIdRaw =
     item.roappProductId ??
     item.roAppProductId ??
     item.ro_app_product_id ??
+    item.roappId ??
+    item.roAppId ??
     item.productId ??
     item.product_id ??
+    // якщо в кошику лежить вкладений product
+    (item.product &&
+      (item.product.roappProductId ||
+       item.product.roAppProductId ||
+       item.product.ro_app_product_id ||
+       item.product.roappId ||
+       item.product.roAppId ||
+       item.product.productId ||
+       item.product.product_id)) ??
     null;
+
+  const productId =
+    productIdRaw != null && !Number.isNaN(Number(productIdRaw))
+      ? Number(productIdRaw)
+      : null;
 
   const quantity = Number(quantityRaw) > 0 ? Number(quantityRaw) : 1;
   const price = Number(priceRaw) >= 0 ? Number(priceRaw) : 0;
@@ -43,7 +64,7 @@ const normalizeCartItem = (item) => {
     name: String(nameRaw),
     quantity,
     price,
-    productId,
+    productId, // це roapp product id
   };
 };
 
@@ -310,28 +331,22 @@ const createOrder = asyncHandler(async (req, res) => {
 
   let successItems = 0;
 
-  // Додаємо позиції в ROAPP
+  // Додаємо кожен товар з кошика як item в ROAPP
   for (const rawItem of cartItems) {
     const item = normalizeCartItem(rawItem);
 
-    // product_id для ROAPP: очікується числовий ID продукту з ROAPP
-    let roappProductId = null;
-    if (item.productId != null) {
-      const num = Number(item.productId);
-      if (!Number.isNaN(num) && num > 0) {
-        roappProductId = num;
-      }
-    }
-
+    // базовий payload
     const payload = {
       title: item.name,
       quantity: item.quantity,
-      price: item.price,
+      // ROAPP зазвичай використовує unit_price для ціни за одиницю
       unit_price: item.price,
+      price: item.price, // дублюємо, щоб точно пройти валідацію
     };
 
-    if (roappProductId) {
-      payload.product_id = roappProductId;
+    // 🔥 КЛЮЧОВЕ: прив'язуємо позицію до товару ROAPP
+    if (item.productId) {
+      payload.product_id = item.productId;
     }
 
     try {
@@ -347,7 +362,7 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   if (successItems === 0) {
-    console.warn('[ROAPP] createOrder: жодна позиція не була успішно додана до замовлення', {
+    console.error('[ROAPP] createOrder: жодна позиція не була успішно додана до замовлення', {
       orderId,
       cartItemsCount: cartItems.length,
     });
