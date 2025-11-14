@@ -278,7 +278,6 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  // 1. Створюємо саме замовлення в ROAPP (без позицій)
   let createdOrder;
   try {
     const { data } = await roappApi.post('orders', {
@@ -308,57 +307,80 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   const orderId = createdOrder.id;
+
   let successItems = 0;
 
-  // 2. Додаємо позиції до замовлення
+  // Додаємо позиції в замовлення ROAPP
   for (const cartItem of cartItems) {
     const normalized = normalizeCartItem(cartItem);
 
-    // entity_id — це ID товару/послуги в ROAPP
-    // У твоєму випадку в кошику приходить id з ROAPP (типу 57046648)
-    // Тому беремо саме його
-    const entityIdRaw =
-      cartItem.id ??
-      cartItem.roappProductId ??
-      cartItem.roAppProductId ??
-      cartItem.ro_app_product_id ??
-      normalized.productId ??
-      null;
+    // Спробувати визначити entity_id (ід товару/сутності в ROAPP)
+    let entityId = null;
 
-    const entityId =
-      entityIdRaw != null && !Number.isNaN(Number(entityIdRaw))
-        ? Number(entityIdRaw)
-        : null;
+    // З фронта ти отримуєш id, який є entity_id ROAPP (як видно з логів: 57046648 тощо)
+    if (cartItem.id && !Number.isNaN(Number(cartItem.id))) {
+      entityId = Number(cartItem.id);
+    } else if (normalized.productId && !Number.isNaN(Number(normalized.productId))) {
+      entityId = Number(normalized.productId);
+    }
 
     if (!entityId) {
       console.error('[ROAPP] createOrder: не вдалося визначити entity_id для позиції', {
         cartItem,
         normalized,
       });
-      continue;
+      continue; // пропускаємо цю позицію, але не валимо все замовлення
     }
 
-    // ВАЖЛИВО:
-    // Не шлемо price/cost/discount/warranty – ROAPP сам підтягне їх із товару за entity_id
+    // ================== ПОЧАТОК ВИПРАВЛЕННЯ v3 ==================
+    // Аналіз логу v2:
+    // 1. `discount`: Потрібно 4 поля. Ми вгадали 1 (`type`). 3 відсутні.
+    // 2. `warranty`: Потрібно 2 поля. Ми вгадали 1 (ймовірно `unit`). 1 відсутнє.
+    //
+    // Спробуємо найпоширеніші назви, яких бракує.
     const payload = {
-      entity_id: entityId,
+      title: normalized.name,
       quantity: normalized.quantity,
       assignee_id: MY_ASSIGNEE_ID,
+      entity_id: entityId,
+      price: normalized.price,
+      cost: normalized.price,
+      
+      // Гіпотеза v3: API очікує 4 ключі: type, value, amount, percent
+      // (навіть якщо це здається надлишковим)
+      discount: {
+        type: 'percentage', // 1-й ключ (вірний з v2)
+        value: 0,           // 2-й ключ (стандартна назва)
+        amount: 0,          // 3-й ключ (синонім value, який часто вимагають)
+        percent: 0,         // 4-й ключ
+      },
+      
+      // Гіпотеза v3: API очікує 2 ключі: value, unit
+      warranty: {
+        value: 0,           // 1-й ключ (стандартна назва)
+        unit: 'month',      // 2-й ключ (вірний з v2)
+      },
     };
+    // =================== КІНЕЦЬ ВИПРАВЛЕННЯ v3 ===================
 
     try {
       await roappApi.post(`orders/${orderId}/items`, payload);
       successItems += 1;
     } catch (err) {
-      const status = err?.response?.status;
-      const errorBody = err?.response?.data || err.message;
+      const errorJson = (() => {
+        try {
+          return JSON.stringify(err?.response?.data || {}, null, 2);
+        } catch {
+          return null;
+        }
+      })();
 
       console.error('[ROAPP] add item to order error:', {
         orderId,
         payload,
-        status,
-        error: errorBody,
-        errorJson: typeof errorBody === 'object' ? JSON.stringify(errorBody, null, 2) : null,
+        status: err?.response?.status,
+        error: err?.response?.data || err.message,
+        errorJson,
       });
     }
   }
