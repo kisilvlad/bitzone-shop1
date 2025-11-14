@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const roappApi = require('../utils/roappApi');
 const Product = require('../models/productModel');
 
-// Константи під твій акаунт ROAPP
+// Константи під твій акаунт ROAPP (ці ID ти вже підбирав у себе в ROAPP)
 const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
@@ -14,6 +14,9 @@ const MY_ASSIGNEE_ID = 306951;
 
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '');
 
+/**
+ * Нормалізація айтема з кошика
+ */
 const normalizeCartItem = (item) => {
   const quantityRaw = item.qty ?? item.quantity ?? item.count ?? 1;
   const priceRaw =
@@ -29,14 +32,21 @@ const normalizeCartItem = (item) => {
     item.product_name ??
     'Товар';
 
-  // Тут ми пробуємо взяти саме ROAPP product_id, якщо він уже прийшов з фронта
-  const productId =
+  // те, що ми сприймаємо як roapp entity/product id
+  const productIdRaw =
     item.roappProductId ??
     item.roAppProductId ??
     item.ro_app_product_id ??
-    item.product_id ??
+    item.roappId ??
+    item.roAppId ??
     item.productId ??
+    item.product_id ??
     null;
+
+  const productId =
+    productIdRaw != null && !Number.isNaN(Number(productIdRaw))
+      ? Number(productIdRaw)
+      : null;
 
   const quantity = Number(quantityRaw) > 0 ? Number(quantityRaw) : 1;
   const price = Number(priceRaw) >= 0 ? Number(priceRaw) : 0;
@@ -45,47 +55,58 @@ const normalizeCartItem = (item) => {
     name: String(nameRaw),
     quantity,
     price,
-    productId,
+    productId, // кандидат у entity_id для ROAPP
   };
 };
 
-// Спроба знайти roappId для товару з cart item
+/**
+ * Спробувати знайти roappId (entity_id) для товару з cartItem
+ */
 const resolveRoappProductIdFromCartItem = async (rawItem) => {
   try {
-    // 1) Якщо з фронта прийшов явний roappProductId
-    const directRoappId =
-      rawItem.roappProductId ??
-      rawItem.roAppProductId ??
-      rawItem.ro_app_product_id ??
-      null;
+    // 1) прямо з cartItem
+    const directCandidates = [
+      rawItem.roappProductId,
+      rawItem.roAppProductId,
+      rawItem.ro_app_product_id,
+      rawItem.roappId,
+      rawItem.roAppId,
+      rawItem.productId,
+      rawItem.product_id,
+    ];
 
-    if (directRoappId != null && !Number.isNaN(Number(directRoappId))) {
-      return Number(directRoappId);
+    for (const v of directCandidates) {
+      if (v == null) continue;
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
     }
 
-    // 2) Якщо є вкладений об’єкт product
+    // 2) з вкладеного product (якщо фронт кладе туди)
     const productObj = rawItem.product || rawItem.productData || null;
     if (productObj) {
-      const roappFromProductObj =
-        productObj.roappId ??
-        productObj.roAppId ??
-        productObj.ro_app_id ??
-        null;
-
-      if (roappFromProductObj != null && !Number.isNaN(Number(roappFromProductObj))) {
-        return Number(roappFromProductObj);
+      const nestedCandidates = [
+        productObj.roappId,
+        productObj.roAppId,
+        productObj.ro_app_id,
+        productObj.productId,
+        productObj.product_id,
+      ];
+      for (const v of nestedCandidates) {
+        if (v == null) continue;
+        const n = Number(v);
+        if (!Number.isNaN(n)) return n;
       }
     }
 
-    // 3) Спроба знайти товар у Mongo по _id та витягнути його roappId
-    const candidates = [];
-    if (rawItem._id) candidates.push(rawItem._id);
-    if (rawItem.productId) candidates.push(rawItem.productId);
-    if (productObj && productObj._id) candidates.push(productObj._id);
+    // 3) через Mongo: шукаємо Product по _id і беремо його roappId
+    const mongoIdCandidates = [];
+    if (rawItem._id) mongoIdCandidates.push(String(rawItem._id));
+    if (rawItem.productId) mongoIdCandidates.push(String(rawItem.productId));
+    if (productObj && productObj._id) mongoIdCandidates.push(String(productObj._id));
 
-    const validObjectIds = candidates
-      .map((id) => String(id))
-      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+    const validObjectIds = mongoIdCandidates.filter((id) =>
+      mongoose.Types.ObjectId.isValid(id)
+    );
 
     if (!validObjectIds.length) return null;
 
@@ -175,7 +196,6 @@ const buildOrderComment = (customer) => {
 const mapItemsWithProducts = async (itemsRaw) => {
   if (!Array.isArray(itemsRaw) || !itemsRaw.length) return [];
 
-  // 1) Збираємо всі можливі roappId товарів (і з плоских, і з вкладених полів)
   const roappIdsSet = new Set();
   for (const it of itemsRaw) {
     const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
@@ -194,7 +214,6 @@ const mapItemsWithProducts = async (itemsRaw) => {
     }
   }
 
-  // 2) Підтягуємо товари з нашої БД за roappId
   let productsByRoappId = {};
   if (roappIdsSet.size) {
     try {
@@ -212,7 +231,6 @@ const mapItemsWithProducts = async (itemsRaw) => {
     }
   }
 
-  // 3) Формуємо фінальний масив айтемів з нормалізованими name / image / price / qty
   return itemsRaw.map((it) => {
     const productObj = it.product || it.catalog_item || it.catalogItem || it.entity || null;
 
@@ -325,7 +343,6 @@ const createOrder = asyncHandler(async (req, res) => {
 
   let clientId = null;
 
-  // Якщо користувач залогінений і в нього вже збережений roAppId – використовуємо
   if (req.user && req.user.roAppId) {
     clientId = req.user.roAppId;
   } else {
@@ -337,6 +354,7 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
+  // 1. Створюємо замовлення без позицій
   let createdOrder;
   try {
     const { data } = await roappApi.post('orders', {
@@ -367,48 +385,57 @@ const createOrder = asyncHandler(async (req, res) => {
 
   const orderId = createdOrder.id;
 
+  // 2. Додаємо позиції
   let successItems = 0;
 
-  // Додаємо позиції в замовлення
   for (const rawItem of cartItems) {
     const item = normalizeCartItem(rawItem);
 
-    // Спроба знайти roappProductId з cart item + нашої БД
-    let roappProductId = item.productId;
-    if (!roappProductId) {
-      roappProductId = await resolveRoappProductIdFromCartItem(rawItem);
+    // entity_id (ID товару/послуги в ROAPP)
+    let entityId = item.productId || null;
+    if (!entityId) {
+      entityId = await resolveRoappProductIdFromCartItem(rawItem);
     }
 
+    if (!entityId) {
+      console.error('[ROAPP] createOrder: не вдалося визначити entity_id для позиції', {
+        cartItem: rawItem,
+        normalized: item,
+      });
+      continue; // пропускаємо цю позицію, щоб не ламати все замовлення
+    }
+
+    const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+    const unitPrice = Number(item.price) >= 0 ? Number(item.price) : 0;
+
+    // payload згідно з validation ROAPP
     const payload = {
       title: item.name,
-      quantity: item.quantity,
-      // Передаємо ціну як unit_price (ROAPP орієнтується на unit_price)
-      unit_price: item.price,
+      quantity,
+      assignee_id: MY_ASSIGNEE_ID,
+      entity_id: entityId,
+      price: unitPrice,
+      cost: unitPrice,
+      discount: 0,
+      warranty: 0,
     };
-
-    if (roappProductId) {
-      payload.product_id = roappProductId;
-    }
 
     try {
       await roappApi.post(`orders/${orderId}/items`, payload);
       successItems += 1;
     } catch (err) {
+      const status = err?.response?.status;
+      const data = err?.response?.data;
       console.error('[ROAPP] add item to order error:', {
         orderId,
         payload,
-        status: err?.response?.status,
-        error: err?.response?.data || err.message,
-        // Додатково логнемо JSON, щоб було видно validation-помилки
-        errorJson: err?.response?.data
-          ? JSON.stringify(err.response.data, null, 2)
-          : null,
+        status,
+        error: data || err.message,
+        errorJson: data ? JSON.stringify(data, null, 2) : undefined,
       });
     }
   }
 
-  // Якщо жодна позиція не додалась – не віддаємо фейковий success,
-  // а роняємо помилку, щоб не було порожніх замовлень в ROAPP.
   if (successItems === 0) {
     console.error('[ROAPP] createOrder: жодна позиція не була успішно додана до замовлення', {
       orderId,
@@ -448,7 +475,6 @@ const getOrderById = asyncHandler(async (req, res) => {
 
   const isAdmin = !!user.isAdmin;
 
-  // 1. Визначаємо clientId для користувача (roAppId або шукаємо по телефону)
   let clientId = user.roAppId || null;
 
   if (!clientId && user.phone) {
@@ -472,7 +498,7 @@ const getOrderById = asyncHandler(async (req, res) => {
     }
   }
 
-  // 2. Тягуємо замовлення з ROAPP
+  // 2. Замовлення
   let orderData;
   try {
     const { data } = await roappApi.get(`orders/${orderId}`);
@@ -487,7 +513,6 @@ const getOrderById = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося отримати замовлення.');
   }
 
-  // 3. Визначаємо client_id для замовлення
   const rawClientId =
     orderData.client_id ??
     orderData.clientId ??
@@ -496,13 +521,12 @@ const getOrderById = asyncHandler(async (req, res) => {
     orderData.customer_id ??
     null;
 
-  // 4. Перевірка доступу
   if (!isAdmin && clientId && rawClientId && String(clientId) !== String(rawClientId)) {
     res.status(403);
     throw new Error('У вас немає доступу до цього замовлення.');
   }
 
-  // 5. Тягнемо позиції
+  // 3. Позиції
   let itemsRaw = [];
   try {
     const { data } = await roappApi.get(`orders/${orderId}/items`);
@@ -513,7 +537,6 @@ const getOrderById = asyncHandler(async (req, res) => {
   }
 
   const items = await mapItemsWithProducts(itemsRaw);
-
   const totalFromItems = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
   const statusObj = orderData.status || {};
@@ -608,7 +631,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
     return res.json([]);
   }
 
-  // 1. Тягнемо всі замовлення (наприклад останні 50)
   let allOrdersRaw = [];
   try {
     const { data: raw } = await roappApi.get('orders', {
@@ -627,7 +649,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося завантажити історію замовлень.');
   }
 
-  // 2. Фільтруємо по client_id
   const myOrdersRaw = allOrdersRaw.filter((order) => {
     const rawClientId =
       order.client_id ??
@@ -639,7 +660,6 @@ const getMyOrders = asyncHandler(async (req, res) => {
     return rawClientId != null && String(rawClientId) === String(clientId);
   });
 
-  // 3. Для кожного замовлення підтягуємо items
   const ordersWithItems = await Promise.all(
     myOrdersRaw.map(async (order) => {
       let itemsRaw = [];
