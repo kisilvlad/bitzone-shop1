@@ -2,7 +2,8 @@
 const axios = require('axios');
 
 const API_KEY = process.env.NOVA_POSHTA_API_KEY;
-const API_URL = process.env.NOVA_POSHTA_API_URL || 'https://api.novaposhta.ua/v2.0/json/';
+const API_URL =
+  process.env.NOVA_POSHTA_API_URL || 'https://api.novaposhta.ua/v2.0/json/';
 
 /**
  * Базовий виклик API Нова Пошта 2.0
@@ -32,7 +33,6 @@ async function callNovaPoshta({ modelName, calledMethod, methodProperties = {} }
     }
 
     if (data.errors && data.errors.length) {
-      // Наприклад: ["API key is invalid"]
       throw new Error('NovaPoshta API error: ' + data.errors.join('; '));
     }
 
@@ -42,7 +42,11 @@ async function callNovaPoshta({ modelName, calledMethod, methodProperties = {} }
 
     return data.data || [];
   } catch (e) {
-    console.error('NovaPoshta: помилка запиту', { modelName, calledMethod, methodProperties });
+    console.error('NovaPoshta: помилка запиту', {
+      modelName,
+      calledMethod,
+      methodProperties
+    });
     if (e.response) {
       console.error('Status:', e.response.status);
       console.error('Body:', e.response.data);
@@ -66,17 +70,17 @@ async function getCities(search = '') {
     calledMethod: 'getCities',
     methodProperties: {
       FindByString: query,
-      Page: 1,
-      Limit: 50
+      // ВАЖЛИВО: API хоче РЯДКИ, а не числа
+      Page: '1',
+      Limit: '50'
     }
   });
 
-  // Мапимо у формат, зручний для фронта
   return data.map((c) => ({
-    Ref: c.Ref, // GUID міста
-    Description: c.Description, // назва міста
-    AreaDescription: c.AreaDescription || '',   // область
-    RegionDescription: c.RegionDescription || '' // район
+    Ref: c.Ref,
+    Description: c.Description,
+    AreaDescription: c.AreaDescription || '',
+    RegionDescription: c.RegionDescription || ''
   }));
 }
 
@@ -93,8 +97,8 @@ async function getWarehouses(cityRef) {
     calledMethod: 'getWarehouses',
     methodProperties: {
       CityRef: ref,
-      Page: 1,
-      Limit: 300
+      Page: '1',
+      Limit: '300'
     }
   });
 
