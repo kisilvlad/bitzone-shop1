@@ -1,90 +1,114 @@
 // backend/services/novaPostService.js
-// Сервіс для роботи з довідниками Нової пошти (міста + відділення)
-// Використовує офіційний JSON API v2.0: https://api.novaposhta.ua/v2.0/json/
+const axios = require('axios');
 
-const axios = require("axios");
-
-const NOVA_API_KEY = process.env.NOVAPOST_API_KEY;
-const NOVA_API_URL = process.env.NOVAPOST_API_URL || "https://api.novaposhta.ua/v2.0/json/";
-
-if (!NOVA_API_KEY) {
-  console.warn("[NovaPost] ⚠️ Не задано NOVAPOST_API_KEY у .env — запити до Нової пошти не працюватимуть");
-}
+const API_KEY = process.env.NOVA_POSHTA_API_KEY;
+const API_URL = process.env.NOVA_POSHTA_API_URL || 'https://api.novaposhta.ua/v2.0/json/';
 
 /**
- * Базовий виклик до API Нової пошти
+ * Базовий виклик API Нова Пошта 2.0
+ * modelName: "Address" | "AddressGeneral" | ...
+ * calledMethod: "getCities" | "getWarehouses" | ...
+ * methodProperties: обʼєкт з параметрами
  */
-async function callNova(modelName, calledMethod, methodProperties = {}) {
-  if (!NOVA_API_KEY) {
-    throw new Error("NOVAPOST_API_KEY is not configured");
+async function callNovaPoshta({ modelName, calledMethod, methodProperties = {} }) {
+  if (!API_KEY) {
+    throw new Error('NovaPoshta: не задано NOVA_POSHTA_API_KEY у .env');
   }
 
   const payload = {
-    apiKey: NOVA_API_KEY,
+    apiKey: API_KEY,
     modelName,
     calledMethod,
-    methodProperties,
+    methodProperties
   };
 
-  const { data } = await axios.post(NOVA_API_URL, payload, {
-    timeout: 10000,
-  });
+  try {
+    const { data } = await axios.post(API_URL, payload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
 
-  if (data.errors && data.errors.length) {
-    console.error("[NovaPost] API errors:", data.errors);
-    throw new Error(data.errors.join("; "));
+    if (!data) {
+      throw new Error('NovaPoshta: порожня відповідь від API');
+    }
+
+    if (data.errors && data.errors.length) {
+      // Наприклад: ["API key is invalid"]
+      throw new Error('NovaPoshta API error: ' + data.errors.join('; '));
+    }
+
+    if (data.success === false) {
+      throw new Error('NovaPoshta: success=false, але помилки не вказані');
+    }
+
+    return data.data || [];
+  } catch (e) {
+    console.error('NovaPoshta: помилка запиту', { modelName, calledMethod, methodProperties });
+    if (e.response) {
+      console.error('Status:', e.response.status);
+      console.error('Body:', e.response.data);
+    } else {
+      console.error(e.message);
+    }
+    throw e;
   }
-
-  if (!data.success) {
-    console.error("[NovaPost] API response not successful:", data);
-    throw new Error("Nova Poshta API: request not successful");
-  }
-
-  return data.data || [];
 }
 
 /**
- * Пошук міст Нової пошти
- * search — частина назви (Київ, Львів, Бровари ...)
- * Повертаємо спрощений список міст для фронтенду
+ * Пошук міст по рядку (Київ, Львів і т.д.)
+ * Використовує Address/getCities з параметром FindByString
  */
-exports.getCities = async (search = "") => {
-  const methodProperties = {};
+async function getCities(search = '') {
+  const query = String(search || '').trim();
+  if (!query) return [];
 
-  if (search && search.trim().length >= 2) {
-    methodProperties.FindByString = search.trim();
-  }
-
-  const cities = await callNova("Address", "getCities", methodProperties);
-
-  // Мапимо у компактний формат, щоб фронту було зручно
-  return cities.map((c) => ({
-    Ref: c.Ref, // головний ідентифікатор міста
-    Description: c.Description, // назва міста укр
-    AreaDescription: c.AreaDescription || c.SettlementAreaDescription || "",
-    RegionDescription: c.SettlementRegionsDescription || "",
-    CityID: c.CityID,
-  }));
-};
-
-/**
- * Отримати відділення по Ref міста
- */
-exports.getWarehouses = async (cityRef) => {
-  if (!cityRef) {
-    throw new Error("cityRef is required");
-  }
-
-  const warehouses = await callNova("Address", "getWarehouses", {
-    CityRef: cityRef,
+  const data = await callNovaPoshta({
+    modelName: 'Address',
+    calledMethod: 'getCities',
+    methodProperties: {
+      FindByString: query,
+      Page: 1,
+      Limit: 50
+    }
   });
 
-  return warehouses.map((w) => ({
-    Ref: w.Ref,
-    Description: w.Description,       // "Відділення №1: вул. ..."
-    ShortAddress: w.ShortAddress,     // "Київ, вул. ..."
-    Number: w.Number,                 // номер відділення
-    CityRef: w.CityRef,
-    CityDescription: w.CityDescription,
+  // Мапимо у формат, зручний для фронта
+  return data.map((c) => ({
+    Ref: c.Ref, // GUID міста
+    Description: c.Description, // назва міста
+    AreaDescription: c.AreaDescription || '',   // область
+    RegionDescription: c.RegionDescription || '' // район
   }));
+}
+
+/**
+ * Список відділень для конкретного міста
+ * Використовує AddressGeneral/getWarehouses з CityRef
+ */
+async function getWarehouses(cityRef) {
+  const ref = String(cityRef || '').trim();
+  if (!ref) return [];
+
+  const data = await callNovaPoshta({
+    modelName: 'AddressGeneral',
+    calledMethod: 'getWarehouses',
+    methodProperties: {
+      CityRef: ref,
+      Page: 1,
+      Limit: 300
+    }
+  });
+
+  return data.map((w) => ({
+    Ref: w.Ref,
+    Description: w.Description,
+    ShortAddress: w.ShortAddress || w.ShortAddressRu || w.Description,
+    CityRef: w.CityRef,
+    CityDescription: w.CityDescription || '',
+    Number: w.Number || ''
+  }));
+}
+
+module.exports = {
+  getCities,
+  getWarehouses
 };

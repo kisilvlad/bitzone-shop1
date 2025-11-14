@@ -1,26 +1,29 @@
 // backend/routes/novaPostRoutes.js
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const service = require("../services/novaPostService");
+const novaPostService = require('../services/novaPostService');
 
-router.get("/cities", async (req, res) => {
-  const { search } = req.query;
+// GET /api/novapost/cities?search=Київ
+router.get('/cities', async (req, res) => {
   try {
-    const list = await service.getCities(search || "");
-    res.json(list);
+    const search = req.query.search || '';
+    const cities = await novaPostService.getCities(search);
+    res.json(cities);
   } catch (e) {
-    console.log("[NovaPost] cities error:", e?.message);
-    res.status(500).json({ error: "Помилка отримання міст" });
+    console.error('NovaPoshta /cities error:', e.message);
+    res.status(500).json({ error: e.message || 'Помилка отримання міст Нова Пошта' });
   }
 });
 
-router.get("/warehouses/:cityRef", async (req, res) => {
+// GET /api/novapost/warehouses/:cityRef
+router.get('/warehouses/:cityRef', async (req, res) => {
   try {
-    const list = await service.getWarehouses(req.params.cityRef);
-    res.json(list);
+    const { cityRef } = req.params;
+    const warehouses = await novaPostService.getWarehouses(cityRef);
+    res.json(warehouses);
   } catch (e) {
-    console.log("[NovaPost] warehouses error:", e?.message);
-    res.status(500).json({ error: "Помилка отримання відділень" });
+    console.error('NovaPoshta /warehouses error:', e.message);
+    res.status(500).json({ error: e.message || 'Помилка отримання відділень Нова Пошта' });
   }
 });
 
