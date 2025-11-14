@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const roappApi = require('../utils/roappApi');
 const Product = require('../models/productModel');
 
-// Константи під твій акаунт ROAPP (ці ID ти вже підбирав у себе в ROAPP)
+// Константи під твій акаунт ROAPP
 const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
@@ -39,8 +39,10 @@ const normalizeCartItem = (item) => {
     item.ro_app_product_id ??
     item.roappId ??
     item.roAppId ??
+    item.entity_id ??
     item.productId ??
     item.product_id ??
+    item.id ?? // 👈 ОЦЕ ГОЛОВНЕ: id з кошика = entity_id ROAPP
     null;
 
   const productId =
@@ -71,8 +73,10 @@ const resolveRoappProductIdFromCartItem = async (rawItem) => {
       rawItem.ro_app_product_id,
       rawItem.roappId,
       rawItem.roAppId,
+      rawItem.entity_id,
       rawItem.productId,
       rawItem.product_id,
+      rawItem.id, // 👈 id з кошика теж перевіряємо як entity_id
     ];
 
     for (const v of directCandidates) {
@@ -90,6 +94,8 @@ const resolveRoappProductIdFromCartItem = async (rawItem) => {
         productObj.ro_app_id,
         productObj.productId,
         productObj.product_id,
+        productObj.entity_id,
+        productObj.id,
       ];
       for (const v of nestedCandidates) {
         if (v == null) continue;
