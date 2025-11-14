@@ -332,6 +332,9 @@ const createOrder = asyncHandler(async (req, res) => {
       continue; // пропускаємо цю позицію, але не валимо все замовлення
     }
 
+    // ================== ПОЧАТОК ВИПРАВЛЕННЯ ==================
+    // API ROAPP вимагає повну структуру для discount та warranty,
+    // навіть якщо вони нульові. Надсилання {} спричиняє помилку 400.
     const payload = {
       title: normalized.name,
       quantity: normalized.quantity,
@@ -339,10 +342,18 @@ const createOrder = asyncHandler(async (req, res) => {
       entity_id: entityId,
       price: normalized.price,
       cost: normalized.price,
-      // ВАЖЛИВО: за вимогами ROAPP discount та warranty мають бути словниками (dict), а не числами
-      discount: {},
-      warranty: {},
+      discount: {
+        type: 'percent', // 'percent' або 'fixed'
+        value: 0,
+        percent: 0,
+        currency_id: 0, // 0 або null, залежно від вимог API (0 безпечніше)
+      },
+      warranty: {
+        type: 'month', // 'day', 'month', 'year'
+        value: 0,
+      },
     };
+    // =================== КІНЕЦЬ ВИПРАВЛЕННЯ ===================
 
     try {
       await roappApi.post(`orders/${orderId}/items`, payload);
