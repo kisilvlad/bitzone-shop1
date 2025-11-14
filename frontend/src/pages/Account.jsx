@@ -24,12 +24,21 @@ const useIsMobile = (bp = 820) => {
   return isMobile;
 };
 
-const formatDate = (d) => {
-  if (!d) return '';
+const mapStatus = (statusRaw) => {
+  const s = (statusRaw || '').toString().toLowerCase();
+
+  if (/delivered|completed|викон|достав/i.test(s)) return { label: 'Доставлено', color: '#1fbf64' };
+  if (/paid|оплач/i.test(s))                      return { label: 'Оплачено',   color: '#00CED1' };
+  if (/processing|в оброб/i.test(s))             return { label: 'В обробці',  color: '#FFD700' };
+  if (/canceled|cancelled|скас/i.test(s))        return { label: 'Скасовано',  color: '#dc3545' };
+  if (/pending|очіку/i.test(s))                  return { label: 'Очікує',     color: '#8A2BE2' };
+
+  return { label: statusRaw || 'Невідомо', color: 'var(--text-3)' };
+};
+
+const niceDate = (d) => {
   try {
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return d || '';
-    return dt.toLocaleDateString('uk-UA', {
+    return new Date(d).toLocaleDateString('uk-UA', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -37,12 +46,6 @@ const formatDate = (d) => {
   } catch {
     return d || '';
   }
-};
-
-/* Optimized image url for order items (same logic as ProductCard) */
-const getOptimizedOrderImageUrl = (originalUrl, width = 300, quality = 82) => {
-  if (!originalUrl) return '/assets/bitzone-logo1.png';
-  return `/api/images?url=${encodeURIComponent(originalUrl)}&w=${width}&q=${quality}`;
 };
 
 /* ====================== Shared UI ====================== */
@@ -67,7 +70,7 @@ const TabButton = ({ active, onClick, children, ariaLabel }) => (
     onKeyDown={(e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        onClick();
+        onClick?.();
       }
     }}
     style={{
@@ -146,14 +149,11 @@ const OrdersTab = ({ token, isMobile }) => {
           setState({ loading: false, error: '' });
         }
       } catch (err) {
-        console.error('[OrdersTab] load error:', err?.response?.data || err.message);
+        console.error('[OrdersTab] Помилка завантаження замовлень:', err);
         if (!cancelled) {
           setState({
             loading: false,
-            error:
-              err?.response?.data?.message ||
-              err?.message ||
-              'Не вдалося завантажити замовлення. Спробуйте пізніше.',
+            error: 'Не вдалося завантажити замовлення. Спробуйте пізніше.',
           });
         }
       }
@@ -177,7 +177,7 @@ const OrdersTab = ({ token, isMobile }) => {
   if (state.error) {
     return (
       <div className="surface" style={{ padding: 16 }}>
-        <p style={{ margin: 0, color: 'var(--danger)', whiteSpace: 'pre-line' }}>{state.error}</p>
+        <p style={{ margin: 0, color: 'var(--error)' }}>{state.error}</p>
       </div>
     );
   }
@@ -186,7 +186,7 @@ const OrdersTab = ({ token, isMobile }) => {
     return (
       <div className="surface" style={{ padding: 16 }}>
         <p style={{ margin: 0, color: 'var(--text-2)' }}>
-          Ви ще не оформлювали замовлення. Давайте виправимо це? 🙂
+          Ви ще не робили замовлень. Оберіть щось у каталозі!
         </p>
       </div>
     );
@@ -194,58 +194,51 @@ const OrdersTab = ({ token, isMobile }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {orders.map((order, idx) => {
-        const id = order.id || order._id || '—';
-        const date = order.createdAt || order.created_at || order.date || '';
-        const formattedDate = formatDate(date);
+      {orders.map((order, i) => {
+        const id = order.id || order._id || i + 1;
+        const statusInfo = mapStatus(order.status);
+        const items = order.items || [];
 
-        const status = order.status || {};
-        const statusTitle =
-          status.title || status.name || order.statusTitle || order.statusText || 'В обробці';
+        const total =
+          order.total ??
+          items.reduce(
+            (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+            0
+          );
 
-        const total = order.total || 0;
+        const thumbs = items.slice(0, 4);
+        const extraCount = items.length > 4 ? items.length - 4 : 0;
 
-        const isPaid =
-          statusTitle === 'Оплачено' ||
-          statusTitle === 'Виконано' ||
-          statusTitle === 'Paid' ||
-          statusTitle === 'Completed';
-
-        const statusInfo = {
-          label: statusTitle,
-          color: isPaid ? 'var(--accent-green)' : 'var(--accent-yellow)',
-        };
-
-        const items = Array.isArray(order.items) ? order.items : [];
-        const previewItems = items.slice(0, 3);
-        const extraCount = Math.max(0, items.length - previewItems.length);
-
+        // картка замовлення
         return (
           <Link
-            key={id || idx}
-            to={`/orders/${id}`}
-            style={{ textDecoration: 'none' }}
+            key={id}
+            to={`/account/orders/${id}`}
+            style={{ textDecoration: 'none', color: 'inherit' }}
           >
             <motion.div
-              className="surface"
-              whileHover={{ y: -2, boxShadow: '0 14px 40px rgba(0,0,0,0.35)' }}
-              transition={{ duration: 0.18 }}
+              className="surface order-card"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
               style={{
-                borderRadius: 18,
                 padding: isMobile ? 12 : 16,
+                borderRadius: 18,
+                borderLeft: `4px solid ${order.statusColor || statusInfo.color}`,
                 display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.5fr) minmax(0, 1.4fr) auto',
-                gap: isMobile ? 10 : 18,
+                gridTemplateColumns: isMobile
+                  ? 'minmax(0, 1fr)'
+                  : 'minmax(0, 2.1fr) minmax(0, 2.3fr) minmax(0, 1.6fr) auto',
+                gap: 10,
                 alignItems: 'center',
-                cursor: 'pointer',
               }}
             >
-              {/* ліва частина: номер + дата + статус */}
+              {/* номер + дата + статус у одному блоці */}
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 6,
+                  gap: 4,
                 }}
               >
                 <div
@@ -261,7 +254,7 @@ const OrdersTab = ({ token, isMobile }) => {
                     style={{
                       fontWeight: 800,
                       color: 'var(--text-1)',
-                      fontSize: isMobile ? 14 : 14,
+                      fontSize: 14,
                     }}
                   >
                     #{id}
@@ -291,24 +284,20 @@ const OrdersTab = ({ token, isMobile }) => {
                     color: 'var(--text-3)',
                   }}
                 >
-                  {formattedDate && (
-                    <span>
-                      від <span className="mono">{formattedDate}</span>
-                    </span>
-                  )}
+                  {niceDate(order.createdAt)}
                 </div>
               </div>
 
-              {/* середня колонка: превʼю товарів */}
+              {/* міні-фото товарів */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  flexWrap: 'wrap',
+                  gap: 6,
+                  overflow: 'hidden',
                 }}
               >
-                {previewItems.map((item, idx) => (
+                {thumbs.map((item, idx) => (
                   <div
                     key={item.id || idx}
                     style={{
@@ -322,11 +311,7 @@ const OrdersTab = ({ token, isMobile }) => {
                     }}
                   >
                     <img
-                      src={
-                        item.image
-                          ? getOptimizedOrderImageUrl(item.image, 260, 82)
-                          : '/assets/bitzone-logo1.png'
-                      }
+                      src={item.image || '/assets/images/placeholder-product.png'}
                       alt={item.name || 'Товар'}
                       style={{
                         width: '100%',
@@ -357,9 +342,19 @@ const OrdersTab = ({ token, isMobile }) => {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: isMobile ? 'flex-start' : 'flex-end',
-                  gap: 4,
+                  gap: 2,
                 }}
               >
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-3)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.06,
+                  }}
+                >
+                  Сума
+                </span>
                 <span
                   className="price"
                   style={{ fontWeight: 800, fontSize: isMobile ? 15 : 16 }}
@@ -367,6 +362,20 @@ const OrdersTab = ({ token, isMobile }) => {
                   {formatPrice(total || 0)}
                 </span>
               </div>
+
+              {/* стрілочка справа (на десктопі) */}
+              {!isMobile && (
+                <div
+                  style={{
+                    justifySelf: 'end',
+                    fontSize: 18,
+                    color: 'var(--turquoise-2)',
+                    opacity: 0.85,
+                  }}
+                >
+                  →
+                </div>
+              )}
             </motion.div>
           </Link>
         );
@@ -377,7 +386,7 @@ const OrdersTab = ({ token, isMobile }) => {
 
 /* ====================== Reviews Tab ====================== */
 
-const ReviewsTab = ({ token, isMobile }) => {
+const ReviewsTab = ({ token }) => {
   const [reviews, setReviews] = useState([]);
   const [state, setState] = useState({ loading: true, error: '' });
 
@@ -388,32 +397,26 @@ const ReviewsTab = ({ token, isMobile }) => {
 
     const load = async () => {
       setState({ loading: true, error: '' });
-
       try {
-        const { data } = await axios.get('/api/reviews/my', {
+        const { data } = await axios.get('/api/users/reviews', {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         if (!cancelled) {
           setReviews(Array.isArray(data) ? data : []);
           setState({ loading: false, error: '' });
         }
       } catch (err) {
-        console.error('[ReviewsTab] load error:', err?.response?.data || err.message);
+        console.error('[ReviewsTab] Помилка завантаження відгуків:', err);
         if (!cancelled) {
           setState({
             loading: false,
-            error:
-              err?.response?.data?.message ||
-              err?.message ||
-              'Не вдалося завантажити ваші відгуки.',
+            error: 'Не вдалося завантажити відгуки.',
           });
         }
       }
     };
 
     load();
-
     return () => {
       cancelled = true;
     };
@@ -430,7 +433,7 @@ const ReviewsTab = ({ token, isMobile }) => {
   if (state.error) {
     return (
       <div className="surface" style={{ padding: 16 }}>
-        <p style={{ margin: 0, color: 'var(--danger)', whiteSpace: 'pre-line' }}>{state.error}</p>
+        <p style={{ margin: 0, color: 'var(--error)' }}>{state.error}</p>
       </div>
     );
   }
@@ -448,13 +451,25 @@ const ReviewsTab = ({ token, isMobile }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {reviews.map((rev, i) => (
-        <div key={rev.id || i} className="surface" style={{ padding: 16, borderRadius: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>{rev.productName}</div>
-            <StarRating rating={rev.rating || 0} />
+        <motion.div
+          key={rev.id || i}
+          className="surface"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.03 }}
+          style={{ padding: 14, display: 'grid', gap: 8 }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>
+              {rev.productName || rev.title || 'Товар'}
+            </div>
+            <StarRating rating={rev.rating || rev.stars || 0} />
           </div>
-          <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 14 }}>{rev.comment}</p>
-        </div>
+          <div style={{ fontSize: 14, color: 'var(--text-2)' }}>{rev.comment}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            {niceDate(rev.createdAt || rev.date)}
+          </div>
+        </motion.div>
       ))}
     </div>
   );
@@ -462,133 +477,257 @@ const ReviewsTab = ({ token, isMobile }) => {
 
 /* ====================== Settings Tab ====================== */
 
-const SettingsTab = ({ token, isMobile }) => {
-  const { user } = useSelector((state) => state.auth);
+const SettingsTab = ({ token }) => {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    birthday: '',
+  });
+  const [state, setState] = useState({ loading: true, error: '', success: '' });
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setState({ loading: true, error: '', success: '' });
+      try {
+        const { data } = await axios.get('/api/users/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!cancelled) {
+          setFormData({
+            firstName: data.firstName || data.name || '',
+            lastName: data.lastName || '',
+            birthday: data.birthday || '',
+          });
+          setState({ loading: false, error: '', success: '' });
+        }
+      } catch (err) {
+        console.error('[SettingsTab] Помилка завантаження профілю:', err);
+        if (!cancelled) {
+          setState({
+            loading: false,
+            error: 'Не вдалося завантажити профіль.',
+            success: '',
+          });
+        }
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((f) => ({ ...f, [name]: value }));
+  };
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setState((s) => ({ ...s, error: '', success: '' }));
+
+    try {
+      await axios.put('/api/users/me', formData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setState({ loading: false, error: '', success: 'Зміни збережено.' });
+    } catch (err) {
+      console.error('[SettingsTab] Помилка збереження профілю:', err);
+      setState({
+        loading: false,
+        error: 'Не вдалося зберегти зміни.',
+        success: '',
+      });
+    }
+  };
 
   return (
-    <div className="surface" style={{ padding: 16, borderRadius: 16 }}>
-      <h3 className="h3 mono" style={{ marginBottom: 12, color: 'var(--text-1)' }}>
-        Налаштування профілю
-      </h3>
-      <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 14 }}>
-        Тут згодом будуть налаштування акаунта, адрес доставки, підписки й інші штуки.
-      </p>
-      {user && (
-        <div style={{ marginTop: 12, fontSize: 13, color: 'var(--text-3)' }}>
-          <div>ID користувача: {user._id}</div>
-          {user.email && <div>Email: {user.email}</div>}
-          {user.phone && <div>Телефон: {user.phone}</div>}
+    <div className="surface" style={{ padding: 16 }}>
+      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-3)' }}>Імʼя</label>
+          <input
+            type="text"
+            name="firstName"
+            value={formData.firstName}
+            onChange={onChange}
+            className="input"
+            placeholder="Ваше імʼя"
+          />
         </div>
-      )}
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-3)' }}>Прізвище</label>
+          <input
+            type="text"
+            name="lastName"
+            value={formData.lastName}
+            onChange={onChange}
+            className="input"
+            placeholder="Ваше прізвище"
+          />
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-3)' }}>Дата народження</label>
+          <input
+            type="date"
+            name="birthday"
+            value={formData.birthday}
+            onChange={onChange}
+            className="input"
+          />
+        </div>
+
+        {state.error && (
+          <div style={{ fontSize: 13, color: 'var(--error)' }}>{state.error}</div>
+        )}
+        {state.success && (
+          <div style={{ fontSize: 13, color: 'var(--green)' }}>{state.success}</div>
+        )}
+
+        <button type="submit" className="btn primary" disabled={state.loading}>
+          Зберегти
+        </button>
+      </form>
     </div>
   );
 };
 
-/* ====================== Account Page ====================== */
+/* ====================== MAIN ACCOUNT PAGE ====================== */
 
 export default function Account() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { user, token, isAuthenticated } = useSelector((state) => state.auth);
-  const [activeTab, setActiveTab] = useState('orders');
+  const { user, token, isAuthenticated } = useSelector((s) => s.auth);
   const isMobile = useIsMobile(820);
 
+  const [activeTab, setActiveTab] = useState('orders');
+
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-    }
+    if (!isAuthenticated) navigate('/login');
   }, [isAuthenticated, navigate]);
 
-  if (!isAuthenticated) return null;
-
-  const handleLogout = () => {
+  const onLogout = () => {
     dispatch(logout());
     navigate('/');
   };
 
+  if (!user) {
+    return (
+      <p className="p center" style={{ color: 'var(--text-3)' }}>
+        Завантаження профілю…
+      </p>
+    );
+  }
+
+  const tabs = [
+    { key: 'orders', label: 'Замовлення' },
+    { key: 'reviews', label: 'Відгуки' },
+    { key: 'settings', label: 'Налаштування' },
+  ];
+
   return (
     <motion.div
       className="page account-page"
-      initial={{ opacity: 0, y: 14 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -14 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
+      transition={{ duration: 0.25 }}
+      style={{ padding: isMobile ? '10px 0 32px' : '16px 0 40px' }}
     >
-      <div className="container" style={{ paddingTop: 32, paddingBottom: 32 }}>
-        {/* верхній блок із привітанням та кнопкою виходу */}
+      <div
+        className="container"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        }}
+      >
+        {/* HEADER */}
         <header
+          className="surface"
           style={{
+            padding: isMobile ? 12 : 16,
+            borderRadius: 18,
             display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
             alignItems: isMobile ? 'flex-start' : 'center',
             justifyContent: 'space-between',
-            gap: 10,
-            marginBottom: 24,
+            gap: 12,
           }}
         >
-          <div>
-            <h1 className="h1 mono" style={{ marginBottom: 4 }}>
-              Мій профіль
-            </h1>
-            {user && (
-              <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 14 }}>
-                Привіт,{' '}
-                <span style={{ fontWeight: 600 }}>
-                  {user.firstName || user.name || 'користувач'}
-                </span>
-                !
-              </p>
-            )}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div
+              style={{
+                width: isMobile ? 42 : 50,
+                height: isMobile ? 42 : 50,
+                borderRadius: '50%',
+                background:
+                  'radial-gradient(circle at 0 0, var(--turquoise), transparent 60%), var(--surface-2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                fontSize: isMobile ? 18 : 20,
+              }}
+            >
+              {(user.firstName || user.name || 'B')[0]?.toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Мій акаунт</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)' }}>
+                {user.firstName || user.name || 'Користувач'}
+              </div>
+              {user.phone && (
+                <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>
+                  {user.phone}
+                </div>
+              )}
+            </div>
           </div>
+
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={onLogout}
             className="btn"
             style={{
               padding: '8px 14px',
               borderRadius: 999,
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(255,255,255,0.01)',
-              fontSize: 14,
+              border: '1px solid var(--surface-3)',
+              background: 'transparent',
+              color: 'var(--text-2)',
+              fontSize: 13,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
-            Вийти з акаунта
+            Вийти
           </button>
         </header>
 
-        {/* Tabs */}
-        <div
+        {/* TABS */}
+        <nav
           style={{
             display: 'flex',
             gap: 8,
-            marginBottom: 18,
             flexWrap: 'wrap',
           }}
         >
-          <TabButton
-            active={activeTab === 'orders'}
-            onClick={() => setActiveTab('orders')}
-            ariaLabel="Переглянути мої замовлення"
-          >
-            Замовлення
-          </TabButton>
-          <TabButton
-            active={activeTab === 'reviews'}
-            onClick={() => setActiveTab('reviews')}
-            ariaLabel="Переглянути мої відгуки"
-          >
-            Відгуки
-          </TabButton>
-          <TabButton
-            active={activeTab === 'settings'}
-            onClick={() => setActiveTab('settings')}
-            ariaLabel="Переглянути налаштування"
-          >
-            Налаштування
-          </TabButton>
-        </div>
+          {tabs.map((t) => (
+            <TabButton
+              key={t.key}
+              active={activeTab === t.key}
+              onClick={() => setActiveTab(t.key)}
+              ariaLabel={t.label}
+            >
+              {t.label}
+            </TabButton>
+          ))}
+        </nav>
 
-        {/* Content */}
+        {/* CONTENT */}
         <main>
           <AnimatePresence mode="wait">
             <motion.div
