@@ -24,15 +24,13 @@ const createOrder = asyncHandler(async (req, res) => {
   let customerId;
 
   if (req.user && typeof req.user.roAppId === 'number') {
-    // Якщо користувач залогінений і вже має звʼязок з ROAPP
     customerId = req.user.roAppId;
     console.log('[ROAPP] Використовую існуючого клієнта з roAppId =', customerId);
   } else {
-    // Якщо гість — шукаємо/створюємо клієнта в ROAPP по телефону
     console.log('[ROAPP] Пошук клієнта за телефоном:', customerData.phone);
 
     const searchResponse = await roappApi.get('contacts/people', {
-      params: { 'phones[]': customerData.phone }
+      params: { 'phones[]': customerData.phone },
     });
 
     if (
@@ -50,19 +48,19 @@ const createOrder = asyncHandler(async (req, res) => {
           {
             title: 'Основний',
             phone: customerData.phone,
-            notify: false
-          }
+            notify: false,
+          },
         ],
         emails: customerData.email
           ? [
               {
                 title: 'Основний',
                 email: customerData.email,
-                notify: false
-              }
+                notify: false,
+              },
             ]
           : [],
-        address: `${customerData.city}, ${customerData.address}`
+        address: `${customerData.city}, ${customerData.address}`,
       };
 
       console.log('[ROAPP] Створюємо нового клієнта. Payload:', newCustomerPayload);
@@ -86,7 +84,7 @@ const createOrder = asyncHandler(async (req, res) => {
       branch_id: MY_BRANCH_ID,
       order_type_id: MY_ORDER_TYPE_ID,
       assignee_id: MY_ASSIGNEE_ID,
-      due_date: new Date().toISOString()
+      due_date: new Date().toISOString(),
     });
 
     orderId = data.id;
@@ -95,7 +93,7 @@ const createOrder = asyncHandler(async (req, res) => {
     console.error('[ROAPP] Помилка при створенні замовлення:', {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(500);
     throw new Error('Не вдалося створити замовлення в CRM (ROAPP)');
@@ -105,7 +103,6 @@ const createOrder = asyncHandler(async (req, res) => {
   for (const item of cartItems) {
     try {
       const payload = {
-        // ROAPP зазвичай очікує entity_id + quantity + price
         entity_id: item.id, // ID товару з ROAPP
         quantity: item.qty,
         price: item.price,
@@ -115,17 +112,17 @@ const createOrder = asyncHandler(async (req, res) => {
           type: 'value',
           percentage: 0,
           amount: 0,
-          sponsor: 'staff'
+          sponsor: 'staff',
         },
         warranty: {
           period: '0',
-          periodUnits: 'months'
-        }
+          periodUnits: 'months',
+        },
       };
 
       console.log('[ROAPP] Додаємо позицію в замовлення:', {
         orderId,
-        payload
+        payload,
       });
 
       const { data } = await roappApi.post(
@@ -140,7 +137,7 @@ const createOrder = asyncHandler(async (req, res) => {
         itemId: item.id,
         status: error.response?.status,
         data: error.response?.data,
-        message: error.message
+        message: error.message,
       });
 
       res.status(500);
@@ -161,16 +158,42 @@ const getOrderById = asyncHandler(async (req, res) => {
   const isAdmin = req.user.isAdmin;
 
   let orderData;
+  let itemsData = [];
 
   try {
-    const { data } = await roappApi.get(`orders/${orderId}`);
-    orderData = data;
+    // Тягнемо і сам ордер, і його items
+    const [orderResp, itemsResp] = await Promise.all([
+      roappApi.get(`orders/${orderId}`),
+      roappApi
+        .get(`orders/${orderId}/items`)
+        .catch((err) => {
+          console.warn('[ROAPP] Не вдалося отримати items замовлення:', {
+            orderId,
+            status: err.response?.status,
+            data: err.response?.data,
+            message: err.message,
+          });
+          return { data: null };
+        }),
+    ]);
+
+    orderData = orderResp.data;
+
+    if (itemsResp.data) {
+      if (Array.isArray(itemsResp.data.data)) {
+        itemsData = itemsResp.data.data;
+      } else if (Array.isArray(itemsResp.data)) {
+        itemsData = itemsResp.data;
+      } else if (Array.isArray(itemsResp.data.items)) {
+        itemsData = itemsResp.data.items;
+      }
+    }
   } catch (error) {
     console.error('[ROAPP] Помилка при отриманні замовлення по ID:', {
       orderId,
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(500);
     throw new Error('Не вдалося отримати замовлення з CRM (ROAPP)');
@@ -207,16 +230,26 @@ const getOrderById = asyncHandler(async (req, res) => {
 
   const statusColor = orderData.status?.color || '#1973E1';
 
-  // 3) Нормалізуємо items (щоб фронт мав name, image, price, quantity)
-  const rawItems =
-    orderData.items ||
-    orderData.order_items ||
-    orderData.lines ||
-    [];
+  // 3) Якщо items не прийшли окремим ендпоінтом — пробуємо взяти з самого ордеру
+  if (!itemsData.length) {
+    itemsData =
+      orderData.items ||
+      orderData.order_items ||
+      orderData.lines ||
+      [];
+  }
 
-  const items = rawItems.map((it, index) => {
+  // 4) Нормалізуємо items (name, image, price, quantity)
+  const items = itemsData.map((it, index) => {
     const quantity =
       Number(it.quantity ?? it.qty ?? 1) || 1;
+
+    const product =
+      it.product ||
+      it.entity ||
+      it.asset ||
+      it.bundle ||
+      {};
 
     const price =
       Number(
@@ -227,13 +260,6 @@ const getOrderById = asyncHandler(async (req, res) => {
           ? it.total_sum / quantity
           : 0)
       ) || 0;
-
-    const product =
-      it.product ||
-      it.entity ||
-      it.asset ||
-      it.bundle ||
-      {};
 
     const name =
       it.title ||
@@ -261,25 +287,28 @@ const getOrderById = asyncHandler(async (req, res) => {
       quantity,
       price,
       name,
-      image
+      image,
     };
   });
 
-  // 4) Рахуємо total
+  // 5) Рахуємо total
   const total =
     orderData.total_sum ??
     orderData.total ??
     orderData.totalSum ??
-    items.reduce((sum, it) => sum + (it.price || 0) * (it.quantity || 1), 0);
+    items.reduce(
+      (sum, it) => sum + (it.price || 0) * (it.quantity || 1),
+      0
+    );
 
-  // 5) Віддаємо фронту удобний формат
+  // 6) Віддаємо фронту удобний формат
   res.json({
     id: orderData.id,
     createdAt: orderData.created_at || orderData.createdAt,
     status: statusTitle,
     statusColor,
     total,
-    items
+    items,
   });
 });
 
@@ -315,7 +344,6 @@ const notifyMe = asyncHandler(async (req, res) => {
 const getMyOrders = asyncHandler(async (req, res) => {
   const userId = req.user.roAppId;
 
-  // Перевірка безпеки
   if (typeof userId !== 'number') {
     console.error(
       `Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`
@@ -329,8 +357,8 @@ const getMyOrders = asyncHandler(async (req, res) => {
   try {
     const { data: response } = await roappApi.get('orders', {
       params: {
-        sort: '-created_at'
-      }
+        sort: '-created_at',
+      },
     });
 
     if (response && Array.isArray(response.data)) {
@@ -344,14 +372,13 @@ const getMyOrders = asyncHandler(async (req, res) => {
     console.error('[ROAPP] Помилка при отриманні списку замовлень:', {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(500);
     throw new Error('Не вдалося отримати список замовлень з CRM (ROAPP)');
   }
 
-  // Фільтруємо тільки замовлення цього користувача
-  const filtered = raw.filter(order => {
+  const filtered = raw.filter((order) => {
     const rawClientId =
       order.client_id ??
       order.clientId ??
@@ -362,7 +389,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
     return rawClientId && String(rawClientId) === String(userId);
   });
 
-  const orders = filtered.map(order => {
+  const orders = filtered.map((order) => {
     const statusTitle =
       order.status?.title || order.status?.name || 'В обробці';
 
@@ -388,7 +415,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
       status: statusTitle,
       statusColor: order.status?.color || '#888888',
       isPaid,
-      isDelivered
+      isDelivered,
     };
   });
 
@@ -400,5 +427,5 @@ module.exports = {
   getOrderById,
   updateOrderToPaid,
   notifyMe,
-  getMyOrders
+  getMyOrders,
 };
