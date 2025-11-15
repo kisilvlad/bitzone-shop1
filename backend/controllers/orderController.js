@@ -1,7 +1,5 @@
 // backend/controllers/orderController.js
-// Фікс: коректне створення замовлення + додавання товарів в ROAPP
-// + детальне отримання замовлення з items
-// + безпечний getMyOrders тільки для поточного юзера
+// Створення замовлення в ROAPP + коректна вибірка замовлень/деталей для акаунта
 
 const asyncHandler = require('express-async-handler');
 const roappApi = require('../utils/roappApi');
@@ -10,8 +8,7 @@ const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
 
-// ========================= CREATE ORDER =========================
-
+// ========================== CREATE ORDER ==========================
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
@@ -27,15 +24,13 @@ const createOrder = asyncHandler(async (req, res) => {
   let customerId;
 
   if (req.user && typeof req.user.roAppId === 'number') {
-    // Якщо користувач залогінений і вже має звʼязок з ROAPP
     customerId = req.user.roAppId;
     console.log('[ROAPP] Використовую існуючого клієнта з roAppId =', customerId);
   } else {
-    // Якщо гість — шукаємо/створюємо клієнта в ROAPP по телефону
     console.log('[ROAPP] Пошук клієнта за телефоном:', customerData.phone);
 
     const searchResponse = await roappApi.get('contacts/people', {
-      params: { 'phones[]': customerData.phone }
+      params: { 'phones[]': customerData.phone },
     });
 
     if (
@@ -53,19 +48,19 @@ const createOrder = asyncHandler(async (req, res) => {
           {
             title: 'Основний',
             phone: customerData.phone,
-            notify: false
-          }
+            notify: false,
+          },
         ],
         emails: customerData.email
           ? [
               {
                 title: 'Основний',
                 email: customerData.email,
-                notify: false
-              }
+                notify: false,
+              },
             ]
           : [],
-        address: `${customerData.city}, ${customerData.address}`
+        address: `${customerData.city}, ${customerData.address}`,
       };
 
       console.log('[ROAPP] Створюємо нового клієнта. Payload:', newCustomerPayload);
@@ -80,9 +75,8 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // 2. Створюємо замовлення (без товарів, тільки шапку)
+  // 2. Створюємо замовлення (шапка)
   let orderId;
-  let roOrderNumber = null;
 
   try {
     const { data } = await roappApi.post('orders', {
@@ -90,29 +84,26 @@ const createOrder = asyncHandler(async (req, res) => {
       branch_id: MY_BRANCH_ID,
       order_type_id: MY_ORDER_TYPE_ID,
       assignee_id: MY_ASSIGNEE_ID,
-      due_date: new Date().toISOString()
+      due_date: new Date().toISOString(),
     });
 
     orderId = data.id;
-    roOrderNumber = data.number || null;
-
-    console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}, number = ${roOrderNumber}`);
+    console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}`);
   } catch (error) {
     console.error('[ROAPP] Помилка при створенні замовлення:', {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(500);
     throw new Error('Не вдалося створити замовлення в CRM (ROAPP)');
   }
 
-  // 3. Додаємо товари в замовлення як items
+  // 3. Додаємо товари як items
   for (const item of cartItems) {
     try {
       const payload = {
-        // У більшості випадків ROAPP очікує entity_id + quantity + price
-        entity_id: item.id, // ID товару з ROAPP (у тебе він мапиться на product)
+        entity_id: item.id, // ID товару в ROAPP
         quantity: item.qty,
         price: item.price,
         assignee_id: MY_ASSIGNEE_ID,
@@ -121,20 +112,21 @@ const createOrder = asyncHandler(async (req, res) => {
           type: 'value',
           percentage: 0,
           amount: 0,
-          sponsor: 'staff'
+          sponsor: 'staff',
         },
         warranty: {
           period: '0',
-          periodUnits: 'months'
-        }
+          periodUnits: 'months',
+        },
       };
 
       console.log('[ROAPP] Додаємо позицію в замовлення:', {
         orderId,
-        payload
+        payload,
       });
 
       const { data } = await roappApi.post(`orders/${orderId}/items`, payload);
+
       console.log('[ROAPP] Позицію успішно додано:', data);
     } catch (error) {
       console.error('[ROAPP] Помилка при додаванні товару до замовлення:', {
@@ -142,7 +134,7 @@ const createOrder = asyncHandler(async (req, res) => {
         itemId: item.id,
         status: error.response?.status,
         data: error.response?.data,
-        message: error.message
+        message: error.message,
       });
 
       res.status(500);
@@ -150,42 +142,37 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // 4. Якщо дійшли сюди — замовлення + товари в ROAPP створені
-  res.status(201).json({
-    success: true,
-    orderId,
-    // для фронта (Cart success-екран)
-    orderNumber: roOrderNumber || orderId
-  });
+  // 4. OK
+  res.status(201).json({ success: true, orderId });
 });
 
-// ========================= GET ORDER BY ID =========================
-
-// @desc    Get order by ID (з items)
+// ========================== GET ORDER BY ID ==========================
+// @desc    Get order by ID (для детальної сторінки)
 // @route   GET /api/orders/:id
 // @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
   const { id: orderId } = req.params;
-  const userId = req.user?.roAppId;
-  const isAdmin = req.user?.isAdmin;
+  const userId = req.user.roAppId;
+  const isAdmin = req.user.isAdmin;
 
-  // 1) тягнемо сам order
   let orderData;
+
+  // 1) Тягнемо сам ордер
   try {
     const { data } = await roappApi.get(`orders/${orderId}`);
     orderData = data;
   } catch (error) {
-    console.error('[ROAPP] Помилка при отриманні замовлення:', {
+    console.error('[ROAPP] Помилка getOrderById:', {
       orderId,
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(error.response?.status || 500);
-    throw new Error('Не вдалося отримати замовлення з CRM (ROAPP)');
+    throw new Error('Не вдалося отримати замовлення з CRM');
   }
 
-  // 2) перевірка прав доступу (по клієнту)
+  // 2) Перевірка, що це замовлення саме цього користувача (або адмін)
   const rawClientId =
     orderData.client_id ??
     orderData.clientId ??
@@ -193,82 +180,61 @@ const getOrderById = asyncHandler(async (req, res) => {
     orderData.person_id ??
     orderData.customer_id;
 
-  if (userId && String(rawClientId) !== String(userId) && !isAdmin) {
-    console.warn(
-      `[SECURITY] Користувач з roAppId=${userId} намагається отримати замовлення клієнта=${rawClientId}`
-    );
+  if (!isAdmin && rawClientId && String(rawClientId) !== String(userId)) {
     res.status(403);
     throw new Error('Доступ заборонено');
   }
 
-  // 3) тягнемо items замовлення
-  let rawItems = [];
+  // 3) Тягнемо items цього ордера
+  let items = [];
   try {
-    const { data: itemsRes } = await roappApi.get(`orders/${orderId}/items`);
+    const { data: itemsResp } = await roappApi.get(`orders/${orderId}/items`);
 
-    if (itemsRes && Array.isArray(itemsRes.data)) {
-      rawItems = itemsRes.data;
-    } else if (Array.isArray(itemsRes)) {
-      rawItems = itemsRes;
-    } else {
-      rawItems = [];
-    }
+    const rawItems = Array.isArray(itemsResp?.data)
+      ? itemsResp.data
+      : Array.isArray(itemsResp)
+      ? itemsResp
+      : [];
+
+    items = rawItems.map((it) => ({
+      id: it.id,
+      // назва товару
+      name:
+        it.title ||
+        it.name ||
+        (it.product && it.product.name) ||
+        `Товар #${it.id}`,
+      // кількість
+      quantity: it.quantity || it.qty || 1,
+      // ціна за одиницю
+      price:
+        it.price ??
+        it.unit_price ??
+        (typeof it.total === 'number' && (it.quantity || it.qty)
+          ? it.total / (it.quantity || it.qty)
+          : 0),
+      // картинка, якщо є звʼязок з продуктом
+      image:
+        it.image ||
+        it.image_url ||
+        (it.product &&
+          (it.product.image ||
+            it.product.image_url ||
+            it.product.photo_url)) ||
+        null,
+    }));
   } catch (error) {
-    // Якщо немає items або 404 — не валимо весь запит, просто лог
-    const status = error.response?.status;
-    if (status === 404) {
-      console.warn(`[ROAPP] Для замовлення ${orderId} не знайдено items (404).`);
-      rawItems = [];
-    } else {
-      console.error('[ROAPP] Помилка при отриманні items замовлення:', {
-        orderId,
-        status,
-        data: error.response?.data,
-        message: error.message
-      });
-      // але все одно повертаємо order без items
-      rawItems = [];
-    }
+    console.error('[ROAPP] Не вдалося отримати items для замовлення', orderId, {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+    // не падаємо, просто залишаємо items = []
   }
 
-  // 4) нормалізуємо items під фронт
-  const normalizedItems = rawItems.map((it) => {
-    const entity = it.entity || it.product || {};
-
-    const qty =
-      Number(it.quantity ?? it.qty ?? it.count ?? 1) || 1;
-
-    const price =
-      Number(it.price ?? it.unit_price ?? it.sum ?? 0) || 0;
-
-    const name =
-      it.title ||
-      it.name ||
-      entity.title ||
-      entity.name ||
-      'Товар';
-
-    const image =
-      it.image ||
-      it.image_url ||
-      entity.image_url ||
-      entity.image ||
-      entity.main_image ||
-      null;
-
-    return {
-      id: it.id,
-      entityId: it.entity_id || it.product_id || null,
-      name,
-      quantity: qty,
-      price,
-      image
-    };
-  });
-
-  // 5) рахуємо total, якщо в order його нема
-  const computedTotal = normalizedItems.reduce(
-    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+  const totalFromItems = items.reduce(
+    (sum, it) =>
+      sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
     0
   );
 
@@ -276,27 +242,18 @@ const getOrderById = asyncHandler(async (req, res) => {
     orderData.total_sum ??
     orderData.total ??
     orderData.totalSum ??
-    computedTotal;
+    orderData.amount ??
+    totalFromItems;
 
-  // 6) фінальна відповідь
+  // Віддаємо нормалізований обʼєкт
   res.json({
-    id: orderData.id,
-    number: orderData.number,
-    client_id: rawClientId,
-    status: orderData.status,
-    created_at: orderData.created_at || orderData.createdAt,
+    ...orderData,
+    items,
     total,
-    items: normalizedItems,
-    // якщо раптом треба буде дебажити
-    _raw: {
-      order: orderData,
-      items: rawItems
-    }
   });
 });
 
-// ========================= PAY STUB =========================
-
+// ========================== UPDATE PAID (заглушка) ==========================
 // @desc    Update order to paid (поки просто заглушка)
 // @route   PUT /api/orders/:id/pay
 // @access  Private
@@ -306,8 +263,7 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
   res.json({ id, isPaid: true, paidAt: new Date() });
 });
 
-// ========================= NOTIFY-ME =========================
-
+// ========================== NOTIFY ME ==========================
 // @desc    Notify me when product is available
 // @route   POST /api/orders/notify-me
 // @access  Public
@@ -325,15 +281,13 @@ const notifyMe = asyncHandler(async (req, res) => {
   }
 });
 
-// ========================= GET MY ORDERS LIST =========================
-
+// ========================== GET MY ORDERS (список в акаунті) ==========================
 // @desc    Get my orders (для особистого кабінету)
 // @route   GET /api/orders/my
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
   const userId = req.user.roAppId;
 
-  // Перевірка безпеки
   if (typeof userId !== 'number') {
     console.error(
       `Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`
@@ -347,8 +301,8 @@ const getMyOrders = asyncHandler(async (req, res) => {
   try {
     const { data: response } = await roappApi.get('orders', {
       params: {
-        sort: '-created_at'
-      }
+        sort: '-created_at',
+      },
     });
 
     if (response && Array.isArray(response.data)) {
@@ -362,7 +316,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
     console.error('[ROAPP] Помилка при отриманні списку замовлень:', {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     res.status(500);
     throw new Error('Не вдалося отримати список замовлень з CRM (ROAPP)');
@@ -381,7 +335,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
 
   const orders = filtered.map((order) => {
     const statusTitle =
-      order.status?.title || order.status?.name || 'В обробці';
+      order.status?.title || order.status?.name || order.status || 'В обробці';
 
     const isPaid =
       statusTitle === 'Оплачено' ||
@@ -394,18 +348,21 @@ const getMyOrders = asyncHandler(async (req, res) => {
       statusTitle === 'Delivered' ||
       statusTitle === 'Complete';
 
+    const total =
+      order.total_sum ??
+      order.total ??
+      order.totalSum ??
+      order.amount ??
+      0;
+
     return {
       id: order.id,
       createdAt: order.created_at || order.createdAt,
-      total:
-        order.total_sum ??
-        order.total ??
-        order.totalSum ??
-        0,
+      total,
       status: statusTitle,
       statusColor: order.status?.color || '#888888',
       isPaid,
-      isDelivered
+      isDelivered,
     };
   });
 
@@ -417,5 +374,5 @@ module.exports = {
   getOrderById,
   updateOrderToPaid,
   notifyMe,
-  getMyOrders
+  getMyOrders,
 };
