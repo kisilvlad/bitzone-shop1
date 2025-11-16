@@ -1201,3 +1201,21 @@ html { scroll-behavior: smooth; }
     margin: 0 !important;
   }
 }
+:root {
+  /* Light theme shadows */
+  --shadow-elev-1: 0 6px 14px rgba(0,0,0,0.12);
+  --shadow-elev-2: 0 14px 28px rgba(0,0,0,0.16);
+  --shadow-glass-ring: 0 0 0 1px rgba(255,255,255,0.06);
+
+  --glass-bg: linear-gradient(145deg, rgba(255,255,255,0.28), rgba(255,255,255,0.12));
+}
+
+[data-theme="dark"] {
+  /* Dark theme shadows */
+  --shadow-elev-1: 0 4px 10px rgba(255,255,255,0.05);
+  --shadow-elev-2: 0 14px 38px rgba(255,255,255,0.08);
+
+  --shadow-glass-ring: 0 0 0 1px rgba(255,255,255,0.12);
+
+  --glass-bg: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+}

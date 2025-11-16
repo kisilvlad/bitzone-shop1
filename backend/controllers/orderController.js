@@ -60,6 +60,7 @@ const createOrder = asyncHandler(async (req, res) => {
               },
             ]
           : [],
+        // АДРЕСА КЛІЄНТА В ROAPP (картка клієнта)
         address: `${customerData.city}, ${customerData.address}`,
       };
 
@@ -85,6 +86,8 @@ const createOrder = asyncHandler(async (req, res) => {
       order_type_id: MY_ORDER_TYPE_ID,
       assignee_id: MY_ASSIGNEE_ID,
       due_date: new Date().toISOString(),
+      // 🔥 ДОДАНО: АДРЕСА ДОСТАВКИ В САМЕ ЗАМОВЛЕННЯ ROAPP
+      description: `Доставка Нова Пошта: ${customerData.city}, ${customerData.address}`,
     });
 
     orderId = data.id;
@@ -130,9 +133,9 @@ const createOrder = asyncHandler(async (req, res) => {
         payload
       );
 
-      console.log('[ROAPP] Позицію успішно додано:', data);
+      console.log('[ROAPP] Позицію додано успішно:', data);
     } catch (error) {
-      console.error('[ROAPP] Помилка при додаванні товару до замовлення:', {
+      console.error('[ROAPP] Помилка при додаванні товару в замовлення:', {
         orderId,
         itemId: item.id,
         status: error.response?.status,
@@ -149,7 +152,7 @@ const createOrder = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, orderId });
 });
 
-// @desc    Get order by ID (для сторінки деталей замовлення)
+// @desc    Get order by id (for current user)
 // @route   GET /api/orders/:id
 // @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
@@ -173,16 +176,14 @@ const getOrderById = asyncHandler(async (req, res) => {
             data: err.response?.data,
             message: err.message,
           });
-          return { data: null };
+          return null;
         }),
     ]);
 
     orderData = orderResp.data;
 
-    if (itemsResp.data) {
-      if (Array.isArray(itemsResp.data.data)) {
-        itemsData = itemsResp.data.data;
-      } else if (Array.isArray(itemsResp.data)) {
+    if (itemsResp && itemsResp.data) {
+      if (Array.isArray(itemsResp.data)) {
         itemsData = itemsResp.data;
       } else if (Array.isArray(itemsResp.data.items)) {
         itemsData = itemsResp.data.items;
@@ -214,35 +215,20 @@ const getOrderById = asyncHandler(async (req, res) => {
       orderId,
       'client_id =',
       rawClientId,
-      'user.roAppId =',
+      'currentUser =',
       userId
     );
     res.status(403);
-    throw new Error('Доступ заборонено');
+    throw new Error('Доступ до цього замовлення заборонений');
   }
 
-  // 2) Нормалізуємо статус
-  const statusTitle =
-    orderData.status?.title ||
-    orderData.status?.name ||
-    orderData.status ||
-    'В обробці';
-
-  const statusColor = orderData.status?.color || '#1973E1';
-
-  // 3) Якщо items не прийшли окремим ендпоінтом — пробуємо взяти з самого ордеру
-  if (!itemsData.length) {
-    itemsData =
-      orderData.items ||
-      orderData.order_items ||
-      orderData.lines ||
-      [];
-  }
-
-  // 4) Нормалізуємо items (name, image, price, quantity)
-  const items = itemsData.map((it, index) => {
+  // 2) Мапимо items з різною структурою відповіді
+  const mappedItems = itemsData.map((it) => {
     const quantity =
-      Number(it.quantity ?? it.qty ?? 1) || 1;
+      it.quantity ??
+      it.qty ??
+      it.count ??
+      1;
 
     const product =
       it.product ||
@@ -261,112 +247,92 @@ const getOrderById = asyncHandler(async (req, res) => {
           : 0)
       ) || 0;
 
-    const name =
-      it.title ||
-      it.name ||
-      it.product_name ||
-      product.title ||
-      product.name ||
-      product.product_name ||
-      'Товар';
-
     const image =
-      it.image ||
-      it.image_url ||
-      it.picture ||
-      product.image ||
+      product.imageUrl ||
       product.image_url ||
-      product.picture ||
-      product.photo ||
+      (product.images && product.images[0]) ||
       null;
 
+    const title =
+      product.name ||
+      product.title ||
+      product.full_name ||
+      'Товар';
+
     return {
-      id: it.id || index,
-      roappItemId: it.id,
-      entityId: it.entity_id || product.id,
+      id: it.id,
+      productId: product.id,
+      title,
       quantity,
       price,
-      name,
       image,
     };
   });
 
-  // 5) Рахуємо total
   const total =
     orderData.total_sum ??
     orderData.total ??
     orderData.totalSum ??
-    items.reduce(
-      (sum, it) => sum + (it.price || 0) * (it.quantity || 1),
-      0
-    );
+    mappedItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
 
-  // 6) Віддаємо фронту удобний формат
-  res.json({
+  const statusTitle =
+    orderData.status?.title ||
+    orderData.status?.name ||
+    orderData.status ||
+    'Невідомий статус';
+
+  const statusColor = orderData.status?.color || '#1973E1';
+
+  const createdAt = orderData.created_at || orderData.createdAt;
+
+  const responseOrder = {
     id: orderData.id,
-    createdAt: orderData.created_at || orderData.createdAt,
-    status: statusTitle,
+    createdAt,
+    statusTitle,
     statusColor,
     total,
-    items,
-  });
+    items: mappedItems,
+  };
+
+  res.json(responseOrder);
 });
 
-// @desc    Update order to paid (поки просто заглушка)
+// @desc    Update order to paid (stub for now)
 // @route   PUT /api/orders/:id/pay
 // @access  Private
 const updateOrderToPaid = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  console.log(`Замовлення ${id} позначено як оплачене (симуляція)`);
-  res.json({ id, isPaid: true, paidAt: new Date() });
+  res.json({ message: 'Оплата замовлення буде реалізована пізніше' });
 });
 
-// @desc    Notify me when product is available
+// @desc    Notify me (stub)
 // @route   POST /api/orders/notify-me
 // @access  Public
 const notifyMe = asyncHandler(async (req, res) => {
-  const { productId, productName, phone } = req.body;
-  if (!productId || !productName || !phone) {
-    res.status(400);
-    throw new Error('Недостатньо даних для створення запиту');
-  }
-  res.status(200).json({ success: true, message: 'Запит прийнято!' });
-  try {
-    console.log('[NOTIFY-ME]', { productId, productName, phone });
-  } catch (error) {
-    console.error('Помилка при обробці notify-me:', error);
-  }
+  res.json({ message: 'Функціонал сповіщення буде реалізовано пізніше' });
 });
 
-// @desc    Get my orders (для особистого кабінету)
-// @route   GET /api/orders/my
+// @desc    Get all orders for current user
+// @route   GET /api/orders/myorders
 // @access  Private
 const getMyOrders = asyncHandler(async (req, res) => {
   const userId = req.user.roAppId;
+  const isAdmin = req.user.isAdmin;
 
-  if (typeof userId !== 'number') {
-    console.error(
-      `Критична помилка безпеки: getMyOrders викликано без числового roAppId. User Mongoose ID: ${req.user._id}.`
-    );
-    res.status(401);
-    throw new Error('Не вдалося верифікувати ID користувача для CRM');
-  }
-
-  let raw = [];
+  let ordersData = [];
 
   try {
-    const { data: response } = await roappApi.get('orders', {
-      params: {
-        sort: '-created_at',
-      },
+    const { data } = await roappApi.get('orders', {
+      params: isAdmin
+        ? {}
+        : {
+            client_id: userId,
+          },
     });
 
-    if (response && Array.isArray(response.data)) {
-      raw = response.data;
-    } else if (Array.isArray(response)) {
-      raw = response;
-    } else {
-      raw = [];
+    if (Array.isArray(data.data)) {
+      ordersData = data.data;
+    } else if (Array.isArray(data)) {
+      ordersData = data;
     }
   } catch (error) {
     console.error('[ROAPP] Помилка при отриманні списку замовлень:', {
@@ -378,42 +344,37 @@ const getMyOrders = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося отримати список замовлень з CRM (ROAPP)');
   }
 
-  const filtered = raw.filter((order) => {
-    const rawClientId =
-      order.client_id ??
-      order.clientId ??
-      (order.client && (order.client.id || order.client.person_id)) ??
-      order.person_id ??
-      order.customer_id;
+  const orders = ordersData.map((orderData) => {
+    const total =
+      orderData.total_sum ??
+      orderData.total ??
+      orderData.totalSum ??
+      0;
 
-    return rawClientId && String(rawClientId) === String(userId);
-  });
-
-  const orders = filtered.map((order) => {
     const statusTitle =
-      order.status?.title || order.status?.name || 'В обробці';
+      orderData.status?.title ||
+      orderData.status?.name ||
+      orderData.status ||
+      'Невідомий статус';
+
+    const statusColor = orderData.status?.color || '#1973E1';
 
     const isPaid =
-      statusTitle === 'Оплачено' ||
-      statusTitle === 'Виконано' ||
-      statusTitle === 'Paid' ||
-      statusTitle === 'Completed';
+      orderData.is_paid ??
+      orderData.paid ??
+      false;
 
     const isDelivered =
-      statusTitle === 'Виконано' ||
-      statusTitle === 'Delivered' ||
-      statusTitle === 'Complete';
+      orderData.is_delivered ??
+      orderData.delivered ??
+      false;
 
     return {
-      id: order.id,
-      createdAt: order.created_at || order.createdAt,
-      total:
-        order.total_sum ??
-        order.total ??
-        order.totalSum ??
-        0,
-      status: statusTitle,
-      statusColor: order.status?.color || '#888888',
+      id: orderData.id,
+      createdAt: orderData.created_at || orderData.createdAt,
+      statusTitle,
+      statusColor,
+      total,
       isPaid,
       isDelivered,
     };
