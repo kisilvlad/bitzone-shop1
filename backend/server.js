@@ -63,7 +63,6 @@ const authLimiter = rateLimit({
 });
 
 const novaPostRoutes = require('./routes/novaPostRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
 
 // ---------- МАРШРУТИ (як і було) ----------
 app.use('/api/novapost', novaPostRoutes);
@@ -71,10 +70,11 @@ app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/payments', paymentRoutes); 
 app.use('/api/images', require('./routes/imageRoutes'));
 app.use('/api/webhooks', require('./routes/webhookRoutes')); 
 
+const paymentRoutes = require('./routes/paymentRoutes');
+app.use('/api/payments', paymentRoutes);
 // ---------- Централізований обробник помилок ----------
 app.use(errorHandler);
 
