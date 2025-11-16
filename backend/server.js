@@ -70,6 +70,7 @@ app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes')); 
 app.use('/api/images', require('./routes/imageRoutes'));
 app.use('/api/webhooks', require('./routes/webhookRoutes')); 
 

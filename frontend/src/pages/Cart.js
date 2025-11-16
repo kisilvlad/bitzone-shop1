@@ -177,54 +177,102 @@ export default function Cart() {
     }
   }, [formData.delivery]);
 
-  const handleCheckout = async () => {
-    if (checkoutStep === 'cart') {
-      setCheckoutStep('form');
-      return;
-    }
+const handleCheckout = async () => {
+  if (checkoutStep === 'cart') {
+    setCheckoutStep('form');
+    return;
+  }
 
-    if (!validateForm() || isSubmitting) return;
+  if (!validateForm() || isSubmitting) return;
 
-    setIsSubmitting(true);
+  setIsSubmitting(true);
 
-    const normalizedFormData = {
-      ...formData,
-      phone: normalizePhoneNumber(formData.phone),
-      payment: mapPaymentForBackend(formData.payment)
-    };
-
-    setSuccessGrandTotal(total);
-
-    const orderPayload = {
-      customerData: normalizedFormData,
-      cartItems: items
-    };
-
-    try {
-      const config = { headers: {} };
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-
-      const res = await axios.post('/api/orders', orderPayload, config);
-
-      const backendOrderNumber =
-        res?.data?.orderNumber ||
-        res?.data?.number ||
-        res?.data?.id ||
-        null;
-
-      setOrderNumber(backendOrderNumber);
-      dispatch(clearCart());
-      setCheckoutStep('success');
-    } catch (err) {
-      console.error('Помилка при створенні замовлення:', err);
-      const errorMessage =
-        err.response?.data?.message ||
-        'Не вдалося оформити замовлення. Спробуйте ще раз або звʼяжіться з нами.';
-      alert(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
+  const normalizedFormData = {
+    ...formData,
+    phone: normalizePhoneNumber(formData.phone),
+    payment: mapPaymentForBackend(formData.payment),
   };
+
+  // Збережемо суму для екрана успіху
+  setSuccessGrandTotal(total);
+
+  // Підготуємо дані для бекенду (створення замовлення + ROAPP)
+  const orderPayload = {
+    customerData: normalizedFormData,
+    cartItems: cartItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      qty: item.qty,
+      image: item.image,
+    })),
+  };
+
+  try {
+    const config = { headers: {} };
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+
+    // 1) Створюємо замовлення (з ROAPP інтеграцією) як і раніше
+    const res = await axios.post('/api/orders', orderPayload, config);
+
+    const backendOrderNumber =
+      res?.data?.orderNumber ||
+      res?.data?.number ||
+      res?.data?.id ||
+      null;
+
+    const backendOrderId =
+      res?.data?.orderId ||
+      res?.data?.id ||
+      backendOrderNumber;
+
+    setOrderNumber(backendOrderNumber);
+
+    // 2) Якщо обрано онлайн-оплату — створюємо інвойс Monobank
+    if (normalizedFormData.payment === 'card') {
+      try {
+        const payRes = await axios.post(
+          '/api/payments/monobank/invoice',
+          {
+            orderId: backendOrderId,
+            // Monobank очікує суму в копійках
+            amount: Math.round(total * 100),
+          },
+          config
+        );
+
+        const payUrl =
+          payRes?.data?.pageUrl ||
+          payRes?.data?.payUrl ||
+          payRes?.data?.url;
+
+        if (payUrl) {
+          // Перенаправляємо користувача на сторінку оплати Monobank
+          window.location.href = payUrl;
+          return; // далі не показуємо локальний success-екран
+        }
+      } catch (payErr) {
+        console.error('Помилка створення платежу в Monobank:', payErr);
+        alert(
+          'Замовлення створене, але не вдалося створити онлайн-оплату. ' +
+            'Ви можете оплатити при отриманні або звернутися до нас.'
+        );
+      }
+    }
+
+    // 3) Звичайний сценарій (оплата при отриманні або fallback)
+    dispatch(clearCart());
+    setCheckoutStep('success');
+  } catch (err) {
+    console.error('Помилка при створенні замовлення:', err);
+    const errorMessage =
+      err.response?.data?.message ||
+      'Не вдалося оформити замовлення. Спробуйте ще раз або звʼяжіться з нами.';
+    alert(errorMessage);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleSuccessConfirm = () => {
     setCheckoutStep('empty');
