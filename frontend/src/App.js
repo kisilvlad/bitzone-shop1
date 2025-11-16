@@ -4,6 +4,8 @@ import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import PaymentResult from './pages/PaymentResult';
+
 
 // !!! ПОКРАЩЕННЯ: Компонент-завантажувач винесено за межі 'App' !!!
 // Це запобігає його повторному створенню при кожному рендері App
@@ -40,6 +42,7 @@ export default function App() {
         {/* Загортаємо Routes в Suspense */}
         <Suspense fallback={<PageLoader />}>
           <Routes>
+            <Route path="/payment-result" element={<PaymentResult />} />
             <Route path="/" element={<Home />} />
             <Route path="/products" element={<Products />} />
             <Route path="/product/:id" element={<ProductDetail />} />
