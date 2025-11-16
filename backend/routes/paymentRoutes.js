@@ -1,19 +1,24 @@
 // backend/routes/paymentRoutes.js
+
 const express = require('express');
 const router = express.Router();
+
 const {
   createMonobankInvoice,
-  getMonobankInvoiceStatus,
   monobankWebhook,
+  getMonobankPaymentStatus,
 } = require('../controllers/paymentController');
 
-// 🔹 Без protect, щоб не падало (можна буде додати пізніше, якщо треба)
+// Якщо треба, можеш додати auth middleware, наприклад:
+// const { protect } = require('../middleware/authMiddleware');
+
+// Створення інвойсу Monobank (коли юзер на формі вибирає "Оплата online")
 router.post('/monobank/invoice', createMonobankInvoice);
 
-// Перевірка статусу інвойсу (сторінка /payment-result)
-router.get('/monobank/status', getMonobankInvoiceStatus);
+// Webhook від Monobank (Monobank дергає цей endpoint самостійно)
+router.post('/monobank/webhook', monobankWebhook);
 
-// Webhook (Monobank → наш бекенд)
-router.post('/monobank-webhook', monobankWebhook);
+// Перевірка статусу оплати після повернення з Monobank
+router.get('/monobank/status', getMonobankPaymentStatus);
 
 module.exports = router;
