@@ -2,6 +2,9 @@
 
 const axios = require('axios');
 const asyncHandler = require('express-async-handler');
+const roappApi = require('../utils/roappApi');
+
+const { createRoappPayment, markOrderAsPaid } = require('./roappPaymentService');
 
 const MONOBANK_TOKEN = process.env.MONOBANK_TOKEN;
 const MONOBANK_API_BASE = 'https://api.monobank.ua/api/merchant';
@@ -41,7 +44,7 @@ const createMonobankInvoice = asyncHandler(async (req, res) => {
     amount: Number(amount),
     ccy: 980, // UAH
     merchantPaymInfo: {
-      reference: String(orderId), // це будемо шукати у виписці (statement)
+      reference: String(orderId), // це будемо шукати у виписці (statement) і бачити в webhook
       destination: `Оплата замовлення №${orderId} на BitZone`,
       comment: `Оплата замовлення №${orderId} на BitZone`,
     },
@@ -77,29 +80,106 @@ const createMonobankInvoice = asyncHandler(async (req, res) => {
     });
 
     return res.status(500).json({
-      message: 'Не вдалося створити платіж. Спробуйте ще раз або виберіть інший спосіб оплати.',
+      message:
+        'Не вдалося створити платіж. Спробуйте ще раз або виберіть інший спосіб оплати.',
     });
   }
 });
 
 /**
  * POST /api/payments/monobank/webhook
- * Webhook від Monobank (успішний/неуспішний платіж, reversals тощо).
- * Поки що просто логую, далі тут можна буде додати логіку оновлення ROAPP.
+ * Webhook від Monobank (успішний/неуспішний платіж).
+ * Тут:
+ *  - читаємо статус
+ *  - дістаємо reference (це наш orderId в ROAPP)
+ *  - створюємо коментар до замовлення в ROAPP
+ *  - створюємо платіж у ROAPP (каса)
+ *  - опційно — міняємо статус замовлення на "Оплачено"
  */
 const monobankWebhook = asyncHandler(async (req, res) => {
   try {
-    console.log('[MONOBANK][WEBHOOK] Отримано webhook:', req.body);
+    const body = req.body || {};
+    console.log('[MONOBANK][WEBHOOK] Отримано webhook:', body);
 
-    // TODO: Тут пізніше можна:
-    // - знайти замовлення по reference / invoiceId
-    // - оновити статус оплати в БД
-    // - створити платіж у ROAPP ("рахунки та платежі")
+    // Підстрахуємося на різні варіанти структури
+    const invoiceId = body.invoiceId || body.invoice?.invoiceId || null;
+    const status = body.status || body.invoice?.status || null;
+    const reference =
+      body.reference || body.invoice?.reference || body.orderId || null;
+    const amountCents = body.amount || body.invoice?.amount || 0;
+    const ccy = body.ccy || body.invoice?.ccy || 980;
 
-    res.status(200).json({ ok: true });
+    console.log('[MONOBANK][WEBHOOK] Розібрана подія:', {
+      invoiceId,
+      status,
+      reference,
+      amountCents,
+      ccy,
+    });
+
+    // Цікавить тільки успішна оплата
+    if (status !== 'success' && status !== 'hold') {
+      console.log(
+        '[MONOBANK][WEBHOOK] Статус не success/hold, нічого не робимо.'
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    const orderId = Number(reference);
+    if (!orderId) {
+      console.warn(
+        '[MONOBANK][WEBHOOK] Не вдалося отримати orderId з reference:',
+        reference
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    const amount = amountCents / 100;
+
+    // ✅ 1) Коментар до замовлення в ROAPP
+    try {
+      const commentText = `Оплата через Monobank: ${amount.toFixed(
+        2
+      )} грн. Invoice ID: ${invoiceId || '—'}`;
+
+      console.log('[ROAPP] Додаємо коментар до замовлення:', {
+        orderId,
+        commentText,
+      });
+
+      await roappApi.post(`v1/orders/${orderId}/comments`, {
+        comment: commentText,
+      });
+
+      console.log('[ROAPP] Коментар успішно додано до замовлення', orderId);
+    } catch (commentErr) {
+      console.error('[ROAPP] Не вдалося створити коментар до замовлення:', {
+        orderId,
+        status: commentErr.response?.status,
+        data: commentErr.response?.data,
+        message: commentErr.message,
+      });
+    }
+
+    // ✅ 2) Створюємо платіж у ROAPP в касі
+    await createRoappPayment({
+      orderId,
+      amount,
+      description: `Оплата замовлення №${orderId} через Monobank`,
+      paymentMethod: 'Monobank',
+    });
+
+    // ✅ 3) (опційно) змінюємо статус замовлення на "Оплачено", якщо ROAPP_PAID_STATUS_ID заданий
+    await markOrderAsPaid(orderId);
+
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('[MONOBANK][WEBHOOK] Помилка обробки webhook:', err);
-    res.status(500).json({ ok: false });
+    console.error('[MONOBANK][WEBHOOK] Помилка обробки webhook:', {
+      message: err.message,
+      stack: err.stack,
+    });
+    // Відповідаємо 200, щоб Monobank не почав ретраїти безкінечно
+    return res.status(200).json({ ok: true });
   }
 });
 
