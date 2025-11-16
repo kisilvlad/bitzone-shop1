@@ -60,6 +60,7 @@ const createOrder = asyncHandler(async (req, res) => {
               },
             ]
           : [],
+        // Адреса з форми (місто + відділення/адреса Нової пошти)
         address: `${customerData.city}, ${customerData.address}`,
       };
 
@@ -85,6 +86,9 @@ const createOrder = asyncHandler(async (req, res) => {
       order_type_id: MY_ORDER_TYPE_ID,
       assignee_id: MY_ASSIGNEE_ID,
       due_date: new Date().toISOString(),
+      // 🔥 НОВЕ: пишемо адресу прямо в опис замовлення ROAPP
+      // Щоб у менеджера в ордері було видно, куди відправляти.
+      description: `Доставка Нова Пошта: ${customerData.city}, ${customerData.address}`,
     });
 
     orderId = data.id;
