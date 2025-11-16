@@ -1,247 +1,369 @@
 // src/pages/PaymentResult.js
-import React, { useEffect, useState, useMemo } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { useDispatch } from 'react-redux';
 import { clearCart } from '../redux/cartSlice';
-
-function useQuery() {
-  const { search } = useLocation();
-  return useMemo(() => new URLSearchParams(search), [search]);
-}
+import formatPrice from '../utils/formatPrice';
 
 export default function PaymentResult() {
-  const query = useQuery();
-  const orderId = query.get('orderId');
-  const invoiceId = query.get('invoiceId'); // Monobank додає сам
-  const [status, setStatus] = useState('checking'); // checking | success | failed | unknown
-  const [error, setError] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  useEffect(() => {
-    try {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {}
-  }, []);
+  const [state, setState] = useState({
+    loading: true,
+    success: false,
+    status: null,
+    amount: null,
+    error: null,
+    orderId: null,
+  });
 
   useEffect(() => {
-    const check = async () => {
-      if (!invoiceId) {
-        // Якщо банк чомусь не передав invoiceId
-        setStatus('unknown');
-        return;
-      }
+    const params = new URLSearchParams(location.search);
+    const orderId = params.get('orderId');
 
+    if (!orderId) {
+      setState({
+        loading: false,
+        success: false,
+        status: null,
+        amount: null,
+        error: 'Не передано номер замовлення.',
+        orderId: null,
+      });
+      return;
+    }
+
+    const checkPayment = async () => {
       try {
         const { data } = await axios.get('/api/payments/monobank/status', {
-          params: { invoiceId },
+          params: { orderId },
         });
 
-        if (data.isSuccess) {
-          setStatus('success');
-          // Очищаємо кошик після підтвердженої оплати
+        if (data.ok && data.paid && data.status === 'success') {
+          // якщо оплата успішна — очищаємо кошик
           dispatch(clearCart());
+
+          setState({
+            loading: false,
+            success: true,
+            status: data.status,
+            amount: data.amount,
+            error: null,
+            orderId,
+          });
         } else {
-          setStatus('failed');
+          setState({
+            loading: false,
+            success: false,
+            status: data.status || 'not_found',
+            amount: data.amount || null,
+            error: null,
+            orderId,
+          });
         }
       } catch (err) {
-        console.error('Помилка перевірки статусу оплати:', err);
-        setError(
-          err.response?.data?.message ||
-            'Не вдалося перевірити статус оплати. Якщо кошти списано — звʼяжіться з нами.'
-        );
-        setStatus('unknown');
+        console.error('Помилка перевірки оплати:', err);
+        setState({
+          loading: false,
+          success: false,
+          status: null,
+          amount: null,
+          error:
+            'Не вдалося перевірити оплату. Спробуйте оновити сторінку або звʼязатися з нами.',
+          orderId,
+        });
       }
     };
 
-    check();
-  }, [invoiceId, dispatch]);
+    checkPayment();
+  }, [location.search, dispatch]);
 
-  let title;
-  let description;
+  const { loading, success, status, amount, error, orderId } = state;
 
-  if (status === 'checking') {
-    title = 'Перевіряємо оплату...';
-    description = 'Будь ласка, зачекайте декілька секунд, ми отримуємо відповідь від Monobank.';
-  } else if (status === 'success') {
-    title = 'Оплата пройшла успішно 🎉';
-    description =
-      'Ваше замовлення створено та оплачено. Найближчим часом ми з вами звʼяжемося для підтвердження деталей.';
-  } else if (status === 'failed') {
-    title = 'Оплата не завершена';
-    description =
-      'Здається, оплата не була завершена або була відхилена. Якщо кошти списалися, звʼяжіться з нами для уточнення.';
-  } else {
-    title = 'Статус оплати невідомий';
-    description =
-      'Ми не змогли визначити статус оплати. Якщо ви впевнені, що платіж був проведений, звʼяжіться з нами.';
+  const isDarkTheme = () => {
+    if (typeof document === 'undefined') return false;
+    const root = document.documentElement;
+    return (
+      root.dataset.theme === 'dark' ||
+      root.classList.contains('theme-dark') ||
+      root.classList.contains('dark')
+    );
+  };
+
+  const glassPanel = ({ p = 24 } = {}) => ({
+    padding: p,
+    boxShadow: isDarkTheme()
+      ? 'none'
+      : '0 0 0 1px rgba(255,255,255,0.16), 0 18px 45px rgba(0,0,0,0.32)',
+    border: '1px solid var(--border-primary)',
+    backdropFilter: 'blur(22px)',
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 20,
+    background:
+      'linear-gradient(145deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))',
+  });
+
+  const gradientOverlay = (reverse = false) => ({
+    position: 'absolute',
+    inset: 0,
+    background: reverse
+      ? 'linear-gradient(135deg, rgba(0,0,0,0.16), rgba(255,255,255,0.04))'
+      : 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(0,0,0,0.08))',
+    pointerEvents: 'none',
+    borderRadius: 'inherit',
+  });
+
+  const primaryCta = ({ full = false } = {}) => ({
+    width: full ? '100%' : 'auto',
+    padding: '12px 20px',
+    fontSize: 13,
+    background:
+      'linear-gradient(180deg, var(--accent-green), var(--accent-green-dark))',
+    border: 'none',
+    boxShadow: isDarkTheme()
+      ? 'none'
+      : '0 0 0 1px rgba(255,255,255,0.16), 0 16px 40px rgba(0,0,0,0.32)',
+    color: 'var(--text-on-accent-light)',
+    fontWeight: 600,
+    borderRadius: 999,
+    cursor: 'pointer',
+  });
+
+  const ghostBtn = () => ({
+    padding: '10px 16px',
+    fontSize: 12,
+    borderRadius: 999,
+    background: 'var(--surface-input)',
+    border: '1px solid var(--border-input)',
+    color: 'var(--text-primary)',
+    textDecoration: 'none',
+  });
+
+  const successVariants = {
+    hidden: { scale: 0.9, opacity: 0, y: 10 },
+    visible: { scale: 1, opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+  };
+
+  const wrapperStyle = {
+    minHeight: '60vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  // ---------- LOADING ----------
+  if (loading) {
+    return (
+      <section className="container" style={wrapperStyle}>
+        <motion.div
+          variants={successVariants}
+          initial="hidden"
+          animate="visible"
+          className="surface"
+          style={glassPanel({ p: 24 })}
+        >
+          <div style={gradientOverlay()} />
+          <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
+            <h2 className="h1 retro" style={{ fontSize: 20, marginBottom: 12 }}>
+              Перевіряємо оплату...
+            </h2>
+            <p className="p" style={{ fontSize: 12, opacity: 0.85 }}>
+              Зачекайте кілька секунд. Ми запитуємо банкінг Monobank.
+            </p>
+          </div>
+        </motion.div>
+      </section>
+    );
   }
 
-  return (
-    <section
-      className="container"
-      style={{ minHeight: '60vh', display: 'flex', alignItems: 'center' }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="surface"
-        style={glassPanel({ p: 28, center: true })}
-      >
-        <div style={glassGradientOverlay()} />
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: 520 }}>
-          <h1
-            className="h1 retro"
-            style={{
-              color: 'var(--text-primary)',
-              marginBottom: 12,
-              fontSize: 22,
-              textAlign: 'center',
-            }}
-          >
-            {title}
-          </h1>
+  // ---------- SUCCESS ----------
+  if (success) {
+    const amountUah =
+      typeof amount === 'number' ? formatPrice(amount / 100) : null;
 
-          <p
-            className="p"
-            style={{
-              opacity: 0.9,
-              marginBottom: 12,
-              fontSize: 13,
-              color: 'var(--text-secondary)',
-              textAlign: 'center',
-            }}
-          >
-            {description}
-          </p>
-
-          {orderId && (
-            <p
-              className="p"
+    return (
+      <section className="container" style={wrapperStyle}>
+        <motion.div
+          variants={successVariants}
+          initial="hidden"
+          animate="visible"
+          className="surface"
+          style={glassPanel({ p: 28 })}
+          aria-live="polite"
+        >
+          <div style={gradientOverlay()} />
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 520 }}>
+            <h2
+              className="h1 retro"
               style={{
-                opacity: 0.95,
-                marginBottom: 18,
-                fontSize: 12,
                 color: 'var(--text-primary)',
+                marginBottom: 12,
+                fontSize: 22,
                 textAlign: 'center',
               }}
             >
-              Номер вашого замовлення: <strong>#{orderId}</strong>
-            </p>
-          )}
-
-          {status === 'checking' && (
+              Оплата пройшла успішно 🎉
+            </h2>
             <p
               className="p"
               style={{
-                opacity: 0.8,
-                marginBottom: 16,
+                opacity: 0.9,
+                marginBottom: 8,
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                textAlign: 'center',
+              }}
+            >
+              Ваше замовлення <strong>№{orderId}</strong> успішно оплачено.
+            </p>
+            {amountUah && (
+              <p
+                className="p"
+                style={{
+                  opacity: 0.95,
+                  marginBottom: 16,
+                  fontSize: 13,
+                  color: 'var(--text-primary)',
+                  textAlign: 'center',
+                }}
+              >
+                Сума оплати: <strong>{amountUah}</strong>
+              </p>
+            )}
+            <p
+              className="p"
+              style={{
+                opacity: 0.7,
+                marginBottom: 24,
                 fontSize: 11,
                 color: 'var(--text-secondary)',
                 textAlign: 'center',
               }}
             >
-              Не закривайте цю сторінку, поки йде перевірка.
+              Найближчим часом наш менеджер звʼяжеться з вами для підтвердження деталей
+              доставки.
             </p>
-          )}
 
-          {error && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 12,
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              {/* 🔁 ТУТ ОНОВЛЕНО: перенаправляємо на /account */}
+              <Link to="/account" className="btn btn-green" style={primaryCta({ full: false })}>
+                Перейти до моїх замовлень
+              </Link>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => navigate('/')}
+                style={ghostBtn()}
+              >
+                На головну
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+    );
+  }
+
+  // ---------- FAIL / NOT FOUND / ERROR ----------
+  return (
+    <section className="container" style={wrapperStyle}>
+      <motion.div
+        variants={successVariants}
+        initial="hidden"
+        animate="visible"
+        className="surface"
+        style={glassPanel({ p: 24 })}
+      >
+        <div style={gradientOverlay(true)} />
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 520 }}>
+          <h2
+            className="h1 retro"
+            style={{
+              color: 'var(--text-primary)',
+              marginBottom: 12,
+              fontSize: 20,
+              textAlign: 'center',
+            }}
+          >
+            Не вдалося підтвердити оплату 😔
+          </h2>
+          {error ? (
             <p
               className="p"
               style={{
-                color: 'var(--accent-pink)',
-                fontSize: 11,
+                opacity: 0.9,
                 marginBottom: 16,
+                fontSize: 12,
+                color: 'var(--accent-pink)',
                 textAlign: 'center',
               }}
             >
               {error}
             </p>
+          ) : (
+            <>
+              <p
+                className="p"
+                style={{
+                  opacity: 0.9,
+                  marginBottom: 8,
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                  textAlign: 'center',
+                }}
+              >
+                Статус платежу: <strong>{status || 'невідомий'}</strong>
+              </p>
+              <p
+                className="p"
+                style={{
+                  opacity: 0.8,
+                  marginBottom: 16,
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  textAlign: 'center',
+                }}
+              >
+                Якщо кошти були списані, але статус не оновився — зверніться до нашої підтримки
+                або оновіть сторінку через кілька хвилин.
+              </p>
+            </>
           )}
 
           <div
             style={{
               display: 'flex',
-              justifyContent: 'center',
               gap: 12,
+              justifyContent: 'center',
               flexWrap: 'wrap',
-              marginTop: 8,
             }}
           >
-            <Link
-              to="/"
+            <button
+              type="button"
               className="btn btn-green"
-              style={primaryCta({ compact: true })}
+              onClick={() => navigate('/cart')}
+              style={primaryCta({ full: false })}
             >
+              Повернутись до кошика
+            </button>
+            <Link to="/" className="btn" style={ghostBtn()}>
               На головну
-            </Link>
-            <Link to="/profile/orders" className="btn" style={ghostPill()}>
-              Мої замовлення
             </Link>
           </div>
         </div>
       </motion.div>
     </section>
   );
-}
-
-/* ----- Локальні стилі (щоб не тягнути з Cart.js) ----- */
-
-function glassPanel({ p = 20, center = false } = {}) {
-  return {
-    padding: p,
-    boxShadow:
-      '0 0 0 1px rgba(255,255,255,0.16), 0 18px 45px rgba(0,0,0,0.32)',
-    border: '1px solid var(--border-primary)',
-    backdropFilter: 'blur(22px)',
-    position: 'relative',
-    overflow: 'visible',
-    borderRadius: 20,
-    background:
-      'linear-gradient(145deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))',
-    ...(center
-      ? { display: 'grid', placeItems: 'center', textAlign: 'center' }
-      : {}),
-  };
-}
-
-function glassGradientOverlay() {
-  return {
-    position: 'absolute',
-    inset: 0,
-    background:
-      'linear-gradient(135deg, rgba(255,255,255,0.16), rgba(0,0,0,0.06))',
-    pointerEvents: 'none',
-    borderRadius: 'inherit',
-  };
-}
-
-function primaryCta({ compact = false } = {}) {
-  return {
-    padding: compact ? '10px 16px' : '12px 20px',
-    fontSize: compact ? 12 : 13,
-    background:
-      'linear-gradient(180deg, var(--accent-green), var(--accent-green-dark))',
-    border: 'none',
-    boxShadow:
-      '0 0 0 1px rgba(255,255,255,0.16), 0 16px 40px rgba(0,0,0,0.32)',
-    color: 'var(--text-on-accent-light)',
-    fontWeight: 600,
-    borderRadius: 999,
-    cursor: 'pointer',
-  };
-}
-
-function ghostPill() {
-  return {
-    padding: '9px 14px',
-    fontSize: 11,
-    borderRadius: 999,
-    background: 'var(--surface-input)',
-    border: '1px solid var(--border-input)',
-    color: 'var(--text-primary)',
-    textDecoration: 'none',
-  };
 }

@@ -12,7 +12,7 @@ import {
 } from '../redux/cartSlice';
 import formatPrice from '../utils/formatPrice';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 
 export default function Cart() {
@@ -21,6 +21,7 @@ export default function Cart() {
   const total = useSelector(selectCartTotal);
   const dispatch = useDispatch();
   const { token, user } = useSelector(state => state.auth);
+  const location = useLocation();
 
   const hasItems = items.length > 0;
   const [checkoutStep, setCheckoutStep] = useState(hasItems ? 'cart' : 'empty');
@@ -96,6 +97,27 @@ export default function Cart() {
       setErrors(prev => ({ ...prev, city: '', address: '' }));
     }
   }, [formData.delivery]);
+
+  // Якщо повернулися з Monobank (redirectUrl)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const paymentStatus = params.get('paymentStatus');
+    const orderIdFromUrl = params.get('orderId');
+
+    if (paymentStatus === 'success' && checkoutStep !== 'success') {
+      // збережемо суму на момент оформлення
+      setSuccessGrandTotal(total);
+      if (orderIdFromUrl) {
+        setOrderNumber(orderIdFromUrl);
+      }
+
+      // очищаємо кошик, щоб не дублювати замовлення
+      dispatch(clearCart());
+
+      // показуємо екран успіху
+      setCheckoutStep('success');
+    }
+  }, [location.search, checkoutStep, total, dispatch]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -177,102 +199,102 @@ export default function Cart() {
     }
   }, [formData.delivery]);
 
-const handleCheckout = async () => {
-  if (checkoutStep === 'cart') {
-    setCheckoutStep('form');
-    return;
-  }
-
-  if (!validateForm() || isSubmitting) return;
-
-  setIsSubmitting(true);
-
-  const normalizedFormData = {
-    ...formData,
-    phone: normalizePhoneNumber(formData.phone),
-    payment: mapPaymentForBackend(formData.payment),
-  };
-
-  // Збережемо суму для екрана успіху
-  setSuccessGrandTotal(total);
-
-  // Підготуємо дані для бекенду (створення замовлення + ROAPP)
-  const orderPayload = {
-    customerData: normalizedFormData,
-    cartItems: cartItems.map((item) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      image: item.image,
-    })),
-  };
-
-  try {
-    const config = { headers: {} };
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-
-    // 1) Створюємо замовлення (з ROAPP інтеграцією) як і раніше
-    const res = await axios.post('/api/orders', orderPayload, config);
-
-    const backendOrderNumber =
-      res?.data?.orderNumber ||
-      res?.data?.number ||
-      res?.data?.id ||
-      null;
-
-    const backendOrderId =
-      res?.data?.orderId ||
-      res?.data?.id ||
-      backendOrderNumber;
-
-    setOrderNumber(backendOrderNumber);
-
-    // 2) Якщо обрано онлайн-оплату — створюємо інвойс Monobank
-    if (normalizedFormData.payment === 'card') {
-      try {
-        const payRes = await axios.post(
-          '/api/payments/monobank/invoice',
-          {
-            orderId: backendOrderId,
-            // Monobank очікує суму в копійках
-            amount: Math.round(total * 100),
-          },
-          config
-        );
-
-        const payUrl =
-          payRes?.data?.pageUrl ||
-          payRes?.data?.payUrl ||
-          payRes?.data?.url;
-
-        if (payUrl) {
-          // Перенаправляємо користувача на сторінку оплати Monobank
-          window.location.href = payUrl;
-          return; // далі не показуємо локальний success-екран
-        }
-      } catch (payErr) {
-        console.error('Помилка створення платежу в Monobank:', payErr);
-        alert(
-          'Замовлення створене, але не вдалося створити онлайн-оплату. ' +
-            'Ви можете оплатити при отриманні або звернутися до нас.'
-        );
-      }
+  const handleCheckout = async () => {
+    if (checkoutStep === 'cart') {
+      setCheckoutStep('form');
+      return;
     }
 
-    // 3) Звичайний сценарій (оплата при отриманні або fallback)
-    dispatch(clearCart());
-    setCheckoutStep('success');
-  } catch (err) {
-    console.error('Помилка при створенні замовлення:', err);
-    const errorMessage =
-      err.response?.data?.message ||
-      'Не вдалося оформити замовлення. Спробуйте ще раз або звʼяжіться з нами.';
-    alert(errorMessage);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    if (!validateForm() || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    const normalizedFormData = {
+      ...formData,
+      phone: normalizePhoneNumber(formData.phone),
+      payment: mapPaymentForBackend(formData.payment),
+    };
+
+    // Збережемо суму для екрана успіху
+    setSuccessGrandTotal(total);
+
+    // Підготуємо дані для бекенду (створення замовлення + ROAPP)
+    const orderPayload = {
+      customerData: normalizedFormData,
+      cartItems: items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        qty: item.qty,
+        image: item.image,
+      })),
+    };
+
+    try {
+      const config = { headers: {} };
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+
+      // 1) Створюємо замовлення (з ROAPP інтеграцією) як і раніше
+      const res = await axios.post('/api/orders', orderPayload, config);
+
+      const backendOrderNumber =
+        res?.data?.orderNumber ||
+        res?.data?.number ||
+        res?.data?.id ||
+        null;
+
+      const backendOrderId =
+        res?.data?.orderId ||
+        res?.data?.id ||
+        backendOrderNumber;
+
+      setOrderNumber(backendOrderNumber);
+
+      // 2) Якщо обрано онлайн-оплату — створюємо інвойс Monobank
+      if (normalizedFormData.payment === 'card') {
+        try {
+          const payRes = await axios.post(
+            '/api/payments/monobank/invoice',
+            {
+              orderId: backendOrderId,
+              // Monobank очікує суму в копійках
+              amount: Math.round(total * 100),
+            },
+            config
+          );
+
+          const payUrl =
+            payRes?.data?.pageUrl ||
+            payRes?.data?.payUrl ||
+            payRes?.data?.url;
+
+          if (payUrl) {
+            // Перенаправляємо користувача на сторінку оплати Monobank
+            window.location.href = payUrl;
+            return; // далі не показуємо локальний success-екран
+          }
+        } catch (payErr) {
+          console.error('Помилка створення платежу в Monobank:', payErr);
+          alert(
+            'Замовлення створене, але не вдалося створити онлайн-оплату. ' +
+              'Ви можете оплатити при отриманні або звернутися до нас.'
+          );
+        }
+      }
+
+      // 3) Звичайний сценарій (оплата при отриманні або fallback)
+      dispatch(clearCart());
+      setCheckoutStep('success');
+    } catch (err) {
+      console.error('Помилка при створенні замовлення:', err);
+      const errorMessage =
+        err.response?.data?.message ||
+        'Не вдалося оформити замовлення. Спробуйте ще раз або звʼяжіться з нами.';
+      alert(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSuccessConfirm = () => {
     setCheckoutStep('empty');
