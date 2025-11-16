@@ -80,39 +80,19 @@ const createOrder = asyncHandler(async (req, res) => {
   let orderId;
 
   try {
-    const orderPayload = {
+    // 🔥 ТУТ ГОЛОВНА ЗМІНА:
+    // Повертаємось до робочого мінімального payload + поле malfunction з адресою
+    const { data } = await roappApi.post('orders', {
+      client_id: customerId,
       branch_id: MY_BRANCH_ID,
       order_type_id: MY_ORDER_TYPE_ID,
-      manager_id: 0, // якщо не використовуєш, можна залишити 0
       assignee_id: MY_ASSIGNEE_ID,
-      asset_id: 0,
-      client_id: customerId,
-      payer_id: 0,
-      ad_campaign_id: 0,
-      // Можеш залишити порожні, якщо не потрібно:
-      // scheduled_for: null,
-      // scheduled_to: null,
-      resource_id: 0,
-
-      // 🔥 СЮДИ КЛАДЕМО АДРЕСУ ДОСТАВКИ
-      // Це поле точно є в схемі ROAPP (manager_notes).
-      manager_notes: `Доставка Нова Пошта: ${customerData.city}, ${customerData.address}`,
-
-      // Якщо хочеш ще дублювати адресу як "опис заявки" — розкоментуй:
-      // malfunction: `Замовлення з сайту BitZone. Доставка НП: ${customerData.city}, ${customerData.address}`,
-
-      engineer_notes: '',
-      resume: '',
-      estimated_price: '',
       due_date: new Date().toISOString(),
-      urgent: false,
-      // custom_fields можемо додати пізніше, коли буде ID кастомного поля
-      // custom_fields: JSON.stringify({ f123: `НП: ${customerData.city}, ${customerData.address}` }),
-    };
 
-    console.log('[ROAPP] Створюємо замовлення. Payload:', orderPayload);
-
-    const { data } = await roappApi.post('orders', orderPayload);
+      // Адресу доставки кладемо в текст "поломки" (опис заявки).
+      // Це простий string з доки, не вимагає ніяких ID.
+      malfunction: `Замовлення з сайту BitZone. Доставка Нова Пошта: ${customerData.city}, ${customerData.address}`,
+    });
 
     orderId = data.id;
     console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}`);
