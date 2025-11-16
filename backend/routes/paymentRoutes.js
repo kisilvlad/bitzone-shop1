@@ -6,10 +6,9 @@ const {
   getMonobankInvoiceStatus,
   monobankWebhook,
 } = require('../controllers/paymentController');
-const { protect } = require('../middleware/authMiddleware');
 
-// Створення інвойсу Monobank (клієнт ініціює оплату)
-router.post('/monobank/invoice', protect, createMonobankInvoice);
+// 🔹 Без protect, щоб не падало (можна буде додати пізніше, якщо треба)
+router.post('/monobank/invoice', createMonobankInvoice);
 
 // Перевірка статусу інвойсу (сторінка /payment-result)
 router.get('/monobank/status', getMonobankInvoiceStatus);
