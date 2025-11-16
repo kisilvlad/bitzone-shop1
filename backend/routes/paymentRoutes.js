@@ -1,5 +1,4 @@
 // backend/routes/paymentRoutes.js
-// Маршрути для Monobank оплат
 
 const express = require('express');
 const router = express.Router();
@@ -9,14 +8,12 @@ const {
   monobankWebhook,
 } = require('../controllers/paymentController');
 
-const {
-  authMiddleware,
-} = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 
-// Створення інвойсу (юзер має бути авторизований)
-router.post('/monobank/invoice', authMiddleware, createMonobankInvoice);
+// Створення інвойсу (коли юзер на кроці оформлення)
+router.post('/monobank/invoice', protect, createMonobankInvoice);
 
-// Webhook від Monobank (має бути публічним, БЕЗ авторизації)
+// Webhook від Monobank (сюди стукає банк, тут немає юзера)
 router.post('/monobank/webhook', monobankWebhook);
 
 module.exports = router;
