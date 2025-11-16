@@ -80,8 +80,6 @@ const createOrder = asyncHandler(async (req, res) => {
   let orderId;
 
   try {
-    // 🔥 ТУТ ГОЛОВНА ЗМІНА:
-    // Повертаємось до робочого мінімального payload + поле malfunction з адресою
     const { data } = await roappApi.post('orders', {
       client_id: customerId,
       branch_id: MY_BRANCH_ID,
@@ -89,9 +87,13 @@ const createOrder = asyncHandler(async (req, res) => {
       assignee_id: MY_ASSIGNEE_ID,
       due_date: new Date().toISOString(),
 
-      // Адресу доставки кладемо в текст "поломки" (опис заявки).
-      // Це простий string з доки, не вимагає ніяких ID.
-      malfunction: `Замовлення з сайту BitZone. Доставка Нова Пошта: ${customerData.city}, ${customerData.address}`,
+      // Короткий опис заявки
+      malfunction: 'Замовлення з сайту BitZone',
+
+      // Кастомне поле "Адреса доставки" (ID: f9939121)
+      custom_fields: {
+        f9939121: `Нова Пошта: ${customerData.city}, ${customerData.address}`,
+      },
     });
 
     orderId = data.id;
