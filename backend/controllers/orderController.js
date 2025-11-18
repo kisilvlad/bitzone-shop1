@@ -1,6 +1,6 @@
 // backend/controllers/orderController.js
-// Фікс: коректне створення замовлення + додавання товарів в ROAPP
-// та безпечний getMyOrders і getOrderById тільки для поточного юзера
+// Створення замовлення в ROAPP + items + отримання public-url
+// Безпечний getMyOrders і getOrderById тільки для поточного юзера
 
 const asyncHandler = require('express-async-handler');
 const roappApi = require('../utils/roappApi');
@@ -9,7 +9,7 @@ const MY_BRANCH_ID = 212229;
 const MY_ORDER_TYPE_ID = 325467;
 const MY_ASSIGNEE_ID = 306951;
 
-// @desc    Create new order
+// @desc    Create new order (ROAPP + public-url)
 // @route   POST /api/orders
 // @access  Private
 const createOrder = asyncHandler(async (req, res) => {
@@ -20,7 +20,7 @@ const createOrder = asyncHandler(async (req, res) => {
     throw new Error('Неможливо створити замовлення без товарів');
   }
 
-  // 1. Визначаємо клієнта в ROAPP
+  // ---------------- 1. Визначаємо клієнта в ROAPP ----------------
   let customerId;
 
   if (req.user && typeof req.user.roAppId === 'number') {
@@ -60,7 +60,6 @@ const createOrder = asyncHandler(async (req, res) => {
               },
             ]
           : [],
-        // Адреса з форми (місто + відділення/адреса Нової пошти)
         address: `${customerData.city}, ${customerData.address}`,
       };
 
@@ -76,8 +75,9 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // 2. Створюємо замовлення (без товарів, тільки шапку)
+  // ---------------- 2. Створюємо замовлення (шапка) ----------------
   let orderId;
+  let orderNumber = null;
 
   try {
     const { data } = await roappApi.post('orders', {
@@ -87,17 +87,18 @@ const createOrder = asyncHandler(async (req, res) => {
       assignee_id: MY_ASSIGNEE_ID,
       due_date: new Date().toISOString(),
 
-      // Короткий опис заявки
       malfunction: 'Замовлення з сайту BitZone',
 
-      // Кастомне поле "Адреса доставки" (ID: f9939121)
+      // Кастомне поле "Адреса доставки" (ID: f9939121) — як було
       custom_fields: {
         f9939121: `Нова Пошта: ${customerData.city}, ${customerData.address}`,
       },
     });
 
     orderId = data.id;
-    console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}`);
+    orderNumber = data.number || data.order_number || data.id;
+
+    console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}, number = ${orderNumber}`);
   } catch (error) {
     console.error('[ROAPP] Помилка при створенні замовлення:', {
       status: error.response?.status,
@@ -108,7 +109,7 @@ const createOrder = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося створити замовлення в CRM (ROAPP)');
   }
 
-  // 3. Додаємо товари в замовлення як items
+  // ---------------- 3. Додаємо товари в замовлення ----------------
   for (const item of cartItems) {
     try {
       const payload = {
@@ -154,8 +155,43 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // 4. Якщо дійшли сюди — замовлення + товари в ROAPP створені
-  res.status(201).json({ success: true, orderId });
+  // ---------------- 4. Тягнемо public-url для оплати ----------------
+  let paymentUrl = null;
+
+  try {
+    const { data: publicResp } = await roappApi.get(
+      `orders/${orderId}/public-url`
+    );
+
+    paymentUrl =
+      publicResp.public_url ||
+      publicResp.url ||
+      publicResp.link ||
+      publicResp.pageUrl ||
+      null;
+
+    console.log('[ROAPP] Public page URL для замовлення:', {
+      orderId,
+      paymentUrl,
+      raw: publicResp,
+    });
+  } catch (error) {
+    console.warn('[ROAPP] Не вдалося отримати public-url замовлення:', {
+      orderId,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+    // Не валимо весь запит — замовлення вже є, просто не буде лінка
+  }
+
+  // ---------------- 5. Віддаємо на фронт ----------------
+  res.status(201).json({
+    success: true,
+    orderId,
+    orderNumber,
+    paymentUrl, // <- сюди фронт буде редіректити при оплаті online
+  });
 });
 
 // @desc    Get order by ID (для сторінки деталей замовлення)
@@ -170,7 +206,6 @@ const getOrderById = asyncHandler(async (req, res) => {
   let itemsData = [];
 
   try {
-    // Тягнемо і сам ордер, і його items
     const [orderResp, itemsResp] = await Promise.all([
       roappApi.get(`orders/${orderId}`),
       roappApi
@@ -208,7 +243,6 @@ const getOrderById = asyncHandler(async (req, res) => {
     throw new Error('Не вдалося отримати замовлення з CRM (ROAPP)');
   }
 
-  // 1) Безпека — перевіряємо, що це саме замовлення цього клієнта
   const rawClientId =
     orderData.client_id ??
     orderData.clientId ??
@@ -230,7 +264,6 @@ const getOrderById = asyncHandler(async (req, res) => {
     throw new Error('Доступ заборонено');
   }
 
-  // 2) Нормалізуємо статус
   const statusTitle =
     orderData.status?.title ||
     orderData.status?.name ||
@@ -239,7 +272,6 @@ const getOrderById = asyncHandler(async (req, res) => {
 
   const statusColor = orderData.status?.color || '#1973E1';
 
-  // 3) Якщо items не прийшли окремим ендпоінтом — пробуємо взяти з самого ордеру
   if (!itemsData.length) {
     itemsData =
       orderData.items ||
@@ -248,7 +280,6 @@ const getOrderById = asyncHandler(async (req, res) => {
       [];
   }
 
-  // 4) Нормалізуємо items (name, image, price, quantity)
   const items = itemsData.map((it, index) => {
     const quantity =
       Number(it.quantity ?? it.qty ?? 1) || 1;
@@ -300,7 +331,6 @@ const getOrderById = asyncHandler(async (req, res) => {
     };
   });
 
-  // 5) Рахуємо total
   const total =
     orderData.total_sum ??
     orderData.total ??
@@ -310,7 +340,6 @@ const getOrderById = asyncHandler(async (req, res) => {
       0
     );
 
-  // 6) Віддаємо фронту удобний формат
   res.json({
     id: orderData.id,
     createdAt: orderData.created_at || orderData.createdAt,
@@ -321,7 +350,7 @@ const getOrderById = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Update order to paid (поки просто заглушка)
+// @desc    Update order to paid (заглушка, поки не чіпаємо)
 // @route   PUT /api/orders/:id/pay
 // @access  Private
 const updateOrderToPaid = asyncHandler(async (req, res) => {
