@@ -20,6 +20,68 @@ const createOrder = asyncHandler(async (req, res) => {
     throw new Error('Неможливо створити замовлення без товарів');
   }
 
+  if (!customerData || !customerData.phone) {
+    res.status(400);
+    throw new Error('Відсутні дані клієнта або телефон');
+  }
+
+  // ----------- Нормалізація способів доставки / оплати для коментаря -----------
+
+  const deliveryRaw = customerData.delivery || 'nova-poshta';
+  const paymentRaw = customerData.payment || 'cash-on-delivery';
+
+  const deliveryLabelMap = {
+    'nova-poshta': 'Нова пошта',
+    'ukr-poshta': 'Укрпошта',
+    meest: 'Meest',
+    'self-pickup': 'Самовивіз (Київ, магазин BitZone)',
+  };
+
+  const paymentLabelMap = {
+    'cash-on-delivery': 'Готівка при отриманні',
+    card: 'Оплата online (карта)',
+    cash: 'Готівка',
+  };
+
+  const deliveryLabel = deliveryLabelMap[deliveryRaw] || deliveryRaw;
+  const paymentLabel = paymentLabelMap[paymentRaw] || paymentRaw;
+
+  const firstName = customerData.firstName || '';
+  const lastName = customerData.lastName || '';
+  const fullName = `${lastName} ${firstName}`.trim() || firstName || lastName || '—';
+
+  const phone = customerData.phone || '—';
+  const email = customerData.email || '';
+
+  const city = (customerData.city || '').trim();
+  const address = (customerData.address || '').trim();
+
+  // Блок з даними клієнта
+  const customerLines = [
+    `Клієнт: ${fullName}`,
+    `Телефон: ${phone}`,
+    email ? `Email: ${email}` : null,
+  ].filter(Boolean);
+
+  // Блок з доставкою/адресою
+  const deliveryLines = [];
+
+  deliveryLines.push(`Спосіб доставки: ${deliveryLabel}`);
+
+  // Якщо НЕ самовивіз — показуємо місто та адресу/відділення
+  if (deliveryRaw !== 'self-pickup') {
+    if (city) deliveryLines.push(`Місто: ${city}`);
+    if (address) deliveryLines.push(`Адреса / відділення: ${address}`);
+  } else {
+    // Для самовивозу — зрозумілий текст для хлопців
+    deliveryLines.push('Самовивіз з магазину BitZone (Київ). Точні деталі узгодити з клієнтом.');
+  }
+
+  // Спосіб оплати
+  deliveryLines.push(`Спосіб оплати: ${paymentLabel}`);
+
+  const deliveryComment = deliveryLines.join('\n');
+
   // ---------------- 1. Визначаємо клієнта в ROAPP ----------------
   let customerId;
 
@@ -60,7 +122,7 @@ const createOrder = asyncHandler(async (req, res) => {
               },
             ]
           : [],
-        address: `${customerData.city}, ${customerData.address}`,
+        address: city || address ? `${city}${city && address ? ', ' : ''}${address}` : '',
       };
 
       console.log('[ROAPP] Створюємо нового клієнта. Payload:', newCustomerPayload);
@@ -80,25 +142,45 @@ const createOrder = asyncHandler(async (req, res) => {
   let orderNumber = null;
 
   try {
-    const { data } = await roappApi.post('orders', {
+    // Формуємо текст "несправності" як розширений коментар для менеджерів
+    const malfunctionLines = [
+      'Замовлення з сайту BitZone',
+      '',
+      '--- Дані клієнта ---',
+      ...customerLines,
+      '',
+      '--- Доставка та оплата ---',
+      ...deliveryLines,
+    ];
+
+    const malfunctionText = malfunctionLines.join('\n');
+
+    const roappOrderPayload = {
       client_id: customerId,
       branch_id: MY_BRANCH_ID,
       order_type_id: MY_ORDER_TYPE_ID,
       assignee_id: MY_ASSIGNEE_ID,
       due_date: new Date().toISOString(),
 
-      malfunction: 'Замовлення з сайту BitZone',
+      // Тут менеджери бачать все основне по клієнту і доставці
+      malfunction: malfunctionText,
 
-      // Кастомне поле "Адреса доставки" (ID: f9939121) — як було
+      // Кастомне поле "Адреса / доставка" (ID: f9939121) — короткий конспект для поля
       custom_fields: {
-        f9939121: `Нова Пошта: ${customerData.city}, ${customerData.address}`,
+        f9939121: deliveryComment,
       },
-    });
+    };
+
+    console.log('[ROAPP] Створюємо замовлення. Payload:', roappOrderPayload);
+
+    const { data } = await roappApi.post('orders', roappOrderPayload);
 
     orderId = data.id;
     orderNumber = data.number || data.order_number || data.id;
 
-    console.log(`[ROAPP] Замовлення створено. orderId = ${orderId}, number = ${orderNumber}`);
+    console.log(
+      `[ROAPP] Замовлення створено. orderId = ${orderId}, number = ${orderNumber}`
+    );
   } catch (error) {
     console.error('[ROAPP] Помилка при створенні замовлення:', {
       status: error.response?.status,
