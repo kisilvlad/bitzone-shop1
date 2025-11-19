@@ -1,104 +1,148 @@
-// Це повний вміст файлу backend/services/syncService.js
-// Повністю замініть ваш старий код на цей
+// backend/services/syncService.js
+// Повністю заміни весь вміст файлу на цей
 
 const mongoose = require('mongoose');
 const axios = require('axios');
 const sharp = require('sharp');
 const cron = require('node-cron');
+
 const Product = require('../models/productModel');
 const Category = require('../models/categoryModel');
-const User = require('../models/User'); // <--- ДОДАНО: Потрібно для оновлення roappId
+const User = require('../models/User'); // потрібно для оновлення roappId
 
 const roappApi = axios.create({
   baseURL: 'https://api.roapp.io/',
   headers: {
-    'accept': 'application/json',
-    'authorization': `Bearer ${process.env.ROAPP_API_KEY}`,
+    accept: 'application/json',
+    authorization: `Bearer ${process.env.ROAPP_API_KEY}`,
   },
 });
 
 // ===================================================================
-// НОВА ФУНКЦІЯ ДЛЯ РЕЄСТРАЦІЇ КОРИСТУВАЧІВ (Ваше виправлення тут)
+// СИНХРОНІЗАЦІЯ КОРИСТУВАЧІВ З ROAPP
 // ===================================================================
 
 /**
  * Синхронізує нового користувача з Roapp.
- * Викликається автоматично з "гачка" моделі User.js під час реєстрації.
+ * Викликається з "гачка" у моделі User.js під час реєстрації.
  */
 const syncUserToRoapp = async (user) => {
-  console.log(`🔄 Починаємо синхронізацію нового користувача ${user.email} з Roapp...`);
+  console.log(`🔄 Починаємо синхронізацію нового користувача ${user.email} з ROAPP...`);
+
   try {
-    // Дані, які ми готуємо для відправки в Roapp
     const personData = {
       name: user.name,
-      emails: [user.email] // <--- ОСЬ ЦЕ ВИПРАВЛЕННЯ (було 'email: user.email')
-      
-      // Якщо у вас є телефон і ви хочете його додати:
-      // phones: user.phone ? [user.phone] : []
+      // ВАЖЛИВО: ROAPP чекає масив emails, а не поле email
+      emails: [user.email],
+      // Якщо є phone, можна додати:
+      // phones: user.phone ? [user.phone] : [],
     };
 
-    // Викликаємо API Roapp для створення "Людини"
-    // (Переконайтеся, що у вашому roappApi.js є функція createPerson,
-    // або що roappApi може робити POST-запити)
-    // Якщо у вас немає roappApi.js, цей код припускає,
-    // що виклик робиться на ендпойнт 'people/'
+    // Створюємо Person в ROAPP
     const response = await roappApi.post('people/', personData);
-    const roappUser = response.data.data; // Припускаємо, що roapp повертає дані так
+    const roappUser = response.data?.data || response.data;
 
     if (!roappUser || !roappUser.id) {
-      throw new Error('Roapp API не повернуло ID користувача.');
+      throw new Error('ROAPP API не повернуло ID користувача.');
     }
-    
-    console.log(`✅ Користувач ${user.email} успішно синхронізований з Roapp ID: ${roappUser.id}`);
 
-    // Важливо: Оновлюємо нашого користувача в MongoDB, 
-    // щоб зберегти ID з Roapp для майбутніх синхронізацій.
+    console.log(`✅ Користувач ${user.email} синхронізований з ROAPP, id=${roappUser.id}`);
+
+    // Зберігаємо roappId в нашій базі
     await User.findByIdAndUpdate(user._id, { roappId: roappUser.id });
-    console.log(`✅ ID ${roappUser.id} збережено для користувача ${user.email} в локальній базі.`);
+    console.log(`✅ ROAPP ID ${roappUser.id} збережено для користувача ${user.email}`);
 
   } catch (error) {
-    console.error(`❌ Помилка синхронізації користувача ${user.email} з Roapp.`);
-    
-    // Логуємо точну помилку від Roapp (саме тут ви бачите '"email" is not allowed"')
+    console.error(`❌ Помилка синхронізації користувача ${user.email} з ROAPP.`);
+
     if (error.response && error.response.data) {
-      console.error('Roapp API Error:', error.response.data);
+      console.error('ROAPP API Error:', error.response.data);
     } else {
       console.error('Unknown sync error:', error.message);
     }
-    
-    // Важливо: Ми НЕ "кидаємо" помилку (throw error) далі.
-    // Якщо цього не зробити, вся реєстрація користувача на сайті
-    // завершиться помилкою через збій синхронізації з Roapp.
-    // Зараз користувач зареєструється на сайті, але не в Roapp.
+
+    // Не кидаємо error далі, щоб реєстрація на сайті не падала
   }
 };
 
 // ===================================================================
-// ВАШІ ІСНУЮЧІ ФУНКЦІЇ (Залишені без змін)
+// СИНХРОНІЗАЦІЯ КАТЕГОРІЙ З ROAPP  (ОНОВЛЕНО)
 // ===================================================================
 
 const syncCategories = async () => {
-  console.log('🔄 Початок синхронізації категорій...');
+  console.log('🔄 [ROAPP] Початок синхронізації категорій...');
+
   try {
-    const response = await roappApi.get('product-categories/');
-    const categoriesFromApi = response.data.data;
+    // ✅ Правильний endpoint згідно з документацією:
+    // GET https://api.roapp.io/warehouse/categories/
+    const response = await roappApi.get('/warehouse/categories/');
+
+    const raw = response.data;
+
+    // Підтримуємо декілька можливих форматів відповіді
+    const categoriesFromApi = Array.isArray(raw)
+      ? raw
+      : raw?.results || raw?.data || [];
+
     if (!categoriesFromApi || categoriesFromApi.length === 0) {
-      console.log('Не знайдено категорій для синхронізації.');
+      console.log('⚠️ [ROAPP] Не знайдено категорій для синхронізації.');
       return;
     }
-    const bulkOps = categoriesFromApi.map(cat => ({
-      updateOne: {
-        filter: { roappId: cat.id },
-        update: { $set: { roappId: cat.id, name: cat.title } },
-        upsert: true,
-      },
-    }));
+
+    const bulkOps = [];
+
+    for (const cat of categoriesFromApi) {
+      // Підстраховуємося по назвах полів
+      const roappId = cat.id ?? cat.pk ?? cat.roapp_id;
+      const name = cat.name ?? cat.title ?? cat.label;
+
+      if (!roappId || !name) {
+        console.warn('[ROAPP] Категорія без id або name, скіпаю:', cat);
+        continue;
+      }
+
+      bulkOps.push({
+        updateOne: {
+          filter: { roappId },
+          update: { $set: { roappId, name } },
+          upsert: true,
+        },
+      });
+    }
+
+    if (!bulkOps.length) {
+      console.log('⚠️ [ROAPP] Немає валідних категорій для оновлення.');
+      return;
+    }
+
     const result = await Category.bulkWrite(bulkOps);
-    console.log(`✅ Синхронізацію категорій завершено! Створено/Оновлено: ${result.upsertedCount + result.modifiedCount}`);
+    const created = result.upsertedCount || 0;
+    const modified = result.modifiedCount || 0;
+
+    console.log(
+      `✅ [ROAPP] Синхронізацію категорій завершено! Створено/оновлено: ${created + modified}`
+    );
   } catch (error) {
-    console.error('❌ Помилка під час синхронізації категорій:', error.message);
+    console.error('❌ [ROAPP] Помилка під час синхронізації категорій:', error.message);
+
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('URL:', error.config && error.config.url);
+      try {
+        console.error(
+          'Response:',
+          JSON.stringify(error.response.data, null, 2)
+        );
+      } catch (_) {
+        console.error('Response (raw):', error.response.data);
+      }
+    }
   }
 };
+
+// ===================================================================
+// СИНХРОНІЗАЦІЯ ТОВАРІВ З ROAPP (твій існуючий код, збережений)
+// ===================================================================
 
 const syncProducts = async () => {
   console.log('🔄 Початок повної синхронізації товарів...');
@@ -117,6 +161,7 @@ const syncProducts = async () => {
         hasMore = false;
       }
     }
+
     console.log(`✅ Отримано ${allProducts.length} товарів з ROAPP.`);
     if (allProducts.length === 0) return;
 
@@ -124,10 +169,18 @@ const syncProducts = async () => {
       allProducts.map(async (p) => {
         const imageUrl = p.images.length > 0 ? p.images[0].image : null;
         let lqip = null;
+
         if (imageUrl) {
           try {
-            const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
-            const lqipBuffer = await sharp(imageResponse.data).resize(20).blur(2).jpeg({ quality: 50 }).toBuffer();
+            const imageResponse = await axios({
+              url: imageUrl,
+              responseType: 'arraybuffer',
+            });
+            const lqipBuffer = await sharp(imageResponse.data)
+              .resize(20)
+              .blur(2)
+              .jpeg({ quality: 50 })
+              .toBuffer();
             lqip = `data:image/jpeg;base64,${lqipBuffer.toString('base64')}`;
           } catch (e) {
             console.error(`Не вдалося згенерувати LQIP для ${p.id}: ${e.message}`);
@@ -142,12 +195,16 @@ const syncProducts = async () => {
           description: p.description || '',
           image: imageUrl,
           images: p.images.map((img) => img.image),
-          stock: p.is_serial && p.sernum_codes ? p.sernum_codes.length : p.is_serial ? 0 : 1,
+          stock: p.is_serial && p.sernum_codes
+            ? p.sernum_codes.length
+            : p.is_serial ? 0 : 1,
           createdAtRoapp: p.created_at,
           lqip,
-          specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
+          specs: p.custom_fields
+            ? Object.values(p.custom_fields).filter(Boolean)
+            : [],
         };
-        
+
         return {
           updateOne: {
             filter: { roappId: p.id },
@@ -162,30 +219,39 @@ const syncProducts = async () => {
     console.log('✅ Синхронізацію товарів завершено!');
     console.log(`   - Створено нових: ${result.upsertedCount}`);
     console.log(`   - Оновлено існуючих: ${result.modifiedCount}`);
-
   } catch (error) {
-    console.error('❌ Помилка під час повної синхронізації товарів:', error.message, error.stack);
+    console.error(
+      '❌ Помилка під час повної синхронізації товарів:',
+      error.message,
+      error.stack
+    );
   }
 };
 
+// ===================================================================
+// ЗАПУСК СИНХРОНІЗАЦІЇ
+// ===================================================================
+
 const runSync = async () => {
-    await syncCategories();
-    await syncProducts();
-}
+  await syncCategories();
+  await syncProducts();
+};
 
 // Запускаємо при старті сервера
 runSync();
 
-// Запускаємо за розкладом
+// Плановий запуск кожні 15 хвилин
 cron.schedule('*/15 * * * *', () => {
   console.log('⏰ Запуск планової синхронізації...');
   runSync();
 });
 
 // ===================================================================
-// ДОДАНО: Експортуємо syncUserToRoapp, щоб User.js мав до неї доступ
+// ЕКСПОРТИ
 // ===================================================================
 module.exports = {
-    syncUserToRoapp,
-    runSync // Експортуємо і це, якщо потрібно
+  syncUserToRoapp,
+  runSync,
+  syncCategories,
+  syncProducts,
 };
