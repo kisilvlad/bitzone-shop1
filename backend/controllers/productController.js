@@ -4,10 +4,9 @@ const asyncHandler = require('express-async-handler');
 const Product = require('../models/productModel');
 const Category = require('../models/categoryModel');
 const Review = require('../models/reviewModel');
+const RoappCategory = require('../models/RoappCategory');
 const allBadWords = require('../config/profanity');
 
-// Оновлені та більш точні словники ключ-слів для побудови регулярних виразів.
-// Це допомагає уникнути помилкових спрацьовувань.
 const TYPE_KEYS = {
   consoles: [
     'консол',
@@ -63,37 +62,24 @@ const TYPE_KEYS = {
 };
 
 const PLATFORM_KEYS = {
-  sony: [
-    'sony',
-    'playstation',
-    'ps5',
-    'ps4',
-    'ps3',
-    'psp',
-    'ps vita',
-    'dualsense',
-    'dualshock',
-  ],
+  sony: ['sony', 'playstation', 'ps5', 'ps4', 'ps3', 'psp', 'ps vita', 'dualsense', 'dualshock'],
   xbox: ['xbox', 'series x', 'series s', 'one', '360'],
   nintendo: ['nintendo', 'switch', 'joy-con', 'wii', 'gamecube', '3ds', 'ds', 'gameboy'],
   steamdeck: ['steam deck', 'steamdeck'],
 };
 
-// Допоміжна функція для створення єдиного регулярного виразу з масиву слів
 const buildRegex = (keys) => new RegExp(keys.join('|'), 'i');
 
-
-// @desc    Отримання категорій товарів
+// ---------- Категорії для вкладки (простий список root) ----------
 const getCategories = asyncHandler(async (req, res) => {
   const categories = await Category.find({}).sort({ name: 1 });
-  res.json(categories.map(cat => ({ id: cat.roappId, name: cat.name })));
+  res.json(categories.map((cat) => ({ id: cat.roappId, name: cat.name })));
 });
 
-
-// @desc    Отримання товарів з фінальною, суворою логікою фільтрації
+// ---------- Отримання товарів ----------
 const getProducts = asyncHandler(async (req, res) => {
   const {
-    category: categoryIdRaw,
+    category: categoryId,
     search,
     page = 1,
     sort,
@@ -104,13 +90,10 @@ const getProducts = asyncHandler(async (req, res) => {
   } = req.query;
 
   const limit = 20;
-  const pageNum = Number(page) || 1;
-  const skip = (pageNum - 1) * limit;
-
-  // Головний масив, куди складаються ВСІ обов'язкові умови (логіка "ТА")
+  const skip = (page - 1) * limit;
   const queryConditions = [];
 
-  // --- 1. Фільтр за ціною ---
+  // 1. Ціна
   const priceFilter = {};
   if (minPrice && !isNaN(parseFloat(minPrice))) priceFilter.$gte = parseFloat(minPrice);
   if (maxPrice && !isNaN(parseFloat(maxPrice))) priceFilter.$lte = parseFloat(maxPrice);
@@ -118,83 +101,71 @@ const getProducts = asyncHandler(async (req, res) => {
     queryConditions.push({ price: priceFilter });
   }
 
-  // --- 2. Фільтр за категорією з ROAPP (точний збіг) ---
-  const categoryId = categoryIdRaw ? Number(categoryIdRaw) : null;
-
+  // 2. Категорія (🔥 Враховуємо ВЕСЬ ПІДДЕРЕВО з RoappCategory)
   if (categoryId) {
-    const category = await Category.findOne({ roappId: categoryId });
-    if (category) {
-      // суворий збіг по назві категорії
-      queryConditions.push({
-        category: new RegExp(`^${category.name}$`, 'i'),
-      });
+    const idNum = Number(categoryId);
+
+    // шукаємо всі категорії, для яких:
+    //  - roappId === idNum (сама категорія)
+    //  - або в path міститься idNum (дочірні)
+    const cats = await RoappCategory.find({
+      $or: [{ roappId: idNum }, { path: idNum }],
+      type: 'product',
+    }).select('roappId');
+
+    let ids = cats.map((c) => c.roappId);
+    if (!ids.includes(idNum)) ids.push(idNum);
+
+    if (ids.length > 0) {
+      // 🔥 фільтруємо по roappCategoryId (який ми зберегли в syncProducts)
+      queryConditions.push({ roappCategoryId: { $in: ids } });
     } else {
-      // Якщо такої категорії нема — повертаємо 0 товарів
-      queryConditions.push({ _id: null });
-    }
-  }
-
-  // --- 3. Фільтр за пошуковим запитом (повнотекстовий) ---
-  if (search) {
-    queryConditions.push({ $text: { $search: search } });
-  }
-
-  // --- 4. Фільтр за ПЛАТФОРМОЮ з логікою ВИКЛЮЧЕННЯ ---
-  if (platforms) {
-    const selectedPlatforms = platforms.split(',');
-
-    // Створюємо regex для платформ, які ми шукаємо
-    const platformIncludeKeywords = selectedPlatforms.flatMap(
-      p => PLATFORM_KEYS[p] || []
-    );
-
-    if (platformIncludeKeywords.length > 0) {
-      const platformIncludeRegex = buildRegex(platformIncludeKeywords);
-      queryConditions.push({
-        $or: [
-          { name: platformIncludeRegex },
-          { category: platformIncludeRegex },
-        ],
-      });
-    }
-
-    // Створюємо regex для платформ, які треба ВИКЛЮЧИТИ
-    const allPlatformKeys = Object.keys(PLATFORM_KEYS);
-    const platformsToExclude = allPlatformKeys.filter(
-      p => !selectedPlatforms.includes(p)
-    );
-
-    if (platformsToExclude.length > 0) {
-      const platformExcludeKeywords = platformsToExclude.flatMap(
-        p => PLATFORM_KEYS[p] || []
-      );
-      if (platformExcludeKeywords.length > 0) {
-        const platformExcludeRegex = buildRegex(platformExcludeKeywords);
-        // Додаємо умову, що назва товару НЕ повинна містити ключові слова інших платформ
-        queryConditions.push({ name: { $not: platformExcludeRegex } });
+      // fallback на стару логіку по назві (якщо раптом що)
+      const category = await Category.findOne({ roappId: categoryId });
+      if (category) {
+        queryConditions.push({ category: new RegExp(`^${category.name}$`, 'i') });
       }
     }
   }
 
-  // --- 5. Фільтр за ТИПОМ з логікою ВИКЛЮЧЕННЯ ---
+  // 3. Пошук
+  if (search) {
+    queryConditions.push({ $text: { $search: search } });
+  }
+
+  // 4. Платформи
+  if (platforms) {
+    const selectedPlatforms = platforms.split(',');
+    const platformIncludeKeywords = selectedPlatforms.flatMap(
+      (p) => PLATFORM_KEYS[p] || []
+    );
+    const platformIncludeRegex = buildRegex(platformIncludeKeywords);
+    queryConditions.push({
+      $or: [{ name: platformIncludeRegex }, { category: platformIncludeRegex }],
+    });
+
+    const allPlatformKeys = Object.keys(PLATFORM_KEYS);
+    const platformsToExclude = allPlatformKeys.filter(
+      (p) => !selectedPlatforms.includes(p)
+    );
+    if (platformsToExclude.length > 0) {
+      const platformExcludeKeywords = platformsToExclude.flatMap(
+        (p) => PLATFORM_KEYS[p] || []
+      );
+      const platformExcludeRegex = buildRegex(platformExcludeKeywords);
+      queryConditions.push({ name: { $not: platformExcludeRegex } });
+    }
+  }
+
+  // 5. Тип (ігри / консолі / аксесуари)
   if (types) {
     const selectedTypes = types.split(',');
-    const typeKeywords = selectedTypes.flatMap(
-      type => TYPE_KEYS[type] || []
-    );
+    const typeRegex = buildRegex(selectedTypes.flatMap((type) => TYPE_KEYS[type] || []));
 
-    if (typeKeywords.length > 0) {
-      const typeRegex = buildRegex(typeKeywords);
-      // Завжди шукаємо за ключовими словами обраного типу
-      queryConditions.push({
-        $or: [
-          { name: typeRegex },
-          { category: typeRegex },
-        ],
-      });
-    }
+    queryConditions.push({
+      $or: [{ name: typeRegex }, { category: typeRegex }],
+    });
 
-    // Додаємо логіку виключення, щоб уникнути перетинів
     if (selectedTypes.includes('consoles') && !selectedTypes.includes('games')) {
       queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.games) } });
     }
@@ -208,10 +179,9 @@ const getProducts = asyncHandler(async (req, res) => {
     }
   }
 
-  // --- ФІНАЛЬНА ПОБУДОВА ЗАПИТУ ---
   const query = queryConditions.length > 0 ? { $and: queryConditions } : {};
 
-  // --- Сортування ---
+  // Сортування
   let sortQuery = {};
   if (search) {
     sortQuery = { score: { $meta: 'textScore' } };
@@ -223,6 +193,7 @@ const getProducts = asyncHandler(async (req, res) => {
       case 'price-desc':
         sortQuery = { price: -1 };
         break;
+      case 'newest':
       default:
         sortQuery = { createdAtRoapp: -1 };
         break;
@@ -239,13 +210,12 @@ const getProducts = asyncHandler(async (req, res) => {
   const total = await Product.countDocuments(query);
 
   res.json({
-    products: products.map(p => ({ ...p.toObject(), _id: p.roappId })),
+    products: products.map((p) => ({ ...p.toObject(), _id: p.roappId })),
     total,
   });
 });
 
-
-// @desc    Отримання одного товару за ID
+// ---------- Один товар ----------
 const getProductById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const product = await Product.findOne({ roappId: id });
@@ -257,20 +227,21 @@ const getProductById = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Отримання відгуків для товару
+// ---------- Відгуки ----------
 const getProductReviews = asyncHandler(async (req, res) => {
   const { id: roappId } = req.params;
-  const reviews = await Review.find({ roappId: roappId }).sort({ createdAt: -1 });
-  res.json(reviews.map(review => ({
-    id: review._id,
-    author: review.authorName,
-    rating: review.rating,
-    text: review.text,
-    createdAt: review.createdAt,
-  })));
+  const reviews = await Review.find({ roappId }).sort({ createdAt: -1 });
+  res.json(
+    reviews.map((review) => ({
+      id: review._id,
+      author: review.authorName,
+      rating: review.rating,
+      text: review.text,
+      createdAt: review.createdAt,
+    }))
+  );
 });
 
-// @desc    Створення нового відгуку
 const createProductReview = asyncHandler(async (req, res) => {
   const { id: roappId } = req.params;
   const { rating, text } = req.body;
@@ -282,7 +253,7 @@ const createProductReview = asyncHandler(async (req, res) => {
     throw new Error('Ваш відгук містить неприпустиму лексику.');
   }
 
-  const product = await Product.findOne({ roappId: roappId });
+  const product = await Product.findOne({ roappId });
   if (!product) {
     res.status(404);
     throw new Error('Товар, на який ви намагаєтесь залишити відгук, не знайдено.');
@@ -299,7 +270,9 @@ const createProductReview = asyncHandler(async (req, res) => {
   });
 
   await review.save();
-  res.status(201).json({ success: true, message: 'Дякуємо! Ваш відгук було опубліковано.' });
+  res
+    .status(201)
+    .json({ success: true, message: 'Дякуємо! Ваш відгук було опубліковано.' });
 });
 
 module.exports = {

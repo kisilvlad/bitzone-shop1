@@ -1,4 +1,3 @@
-
 // backend/models/productModel.js
 const mongoose = require('mongoose');
 
@@ -10,49 +9,67 @@ const productSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+
     name: {
       type: String,
       required: true,
+      trim: true,
     },
+
     price: {
       type: Number,
-      required: true,
       default: 0,
     },
+
+    // Старе текстове поле категорії (назва)
     category: {
       type: String,
+      default: 'Різне',
     },
-    description: { // <-- Поле для опису
+
+    // 🔥 НОВЕ: ID категорії з ROAPP
+    roappCategoryId: {
+      type: Number,
+      index: true,
+      default: null,
+    },
+
+    description: {
       type: String,
       default: '',
     },
+
     image: {
       type: String,
+      default: null,
     },
-    images: [String],
+
+    images: {
+      type: [String],
+      default: [],
+    },
+
     stock: {
       type: Number,
       default: 0,
     },
-    lqip: {
-      type: String,
-    },
+
     createdAtRoapp: {
       type: Date,
     },
-    // !!! ГОЛОВНА ЗМІНА ТУТ: Спрощуємо структуру характеристик !!!
-    specs: [String], // Тепер це просто масив рядків
-  },
-  {
-    timestamps: true,
-  }
-);
 
-// Індекси для швидкої фільтрації та пошуку
-productSchema.index({ category: 1 });
-productSchema.index({ price: 1 });
-productSchema.index({ createdAtRoapp: -1 });
-productSchema.index({ name: 'text' });
+    lqip: {
+      type: String,
+      default: null,
+    },
+
+    specs: {
+      type: [String],
+      default: [],
+    },
+  },
+  { timestamps: true }
+);
 
 const Product = mongoose.model('Product', productSchema);
 
