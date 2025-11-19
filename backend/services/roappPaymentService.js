@@ -1,73 +1,67 @@
 // backend/services/roappPaymentService.js
+// Сервіс для створення платежів у ROAPP, прив'язаних до замовлень.
 
 const roappApi = require('../utils/roappApi');
 
-const ROAPP_CASHBOX_ID = process.env.ROAPP_CASHBOX_ID;        // 360320
-const ROAPP_CASHFLOWITEM_ID = process.env.ROAPP_CASHFLOWITEM_ID; // 2811743 "Оплата клієнтом послуги, товару"
-
-if (!ROAPP_CASHBOX_ID) {
-  console.warn(
-    '[ROAPP][PAYMENT] Увага: ROAPP_CASHBOX_ID не налаштований в .env — створення оплат неможливе.'
-  );
-}
-
-if (!ROAPP_CASHFLOWITEM_ID) {
-  console.warn(
-    '[ROAPP][PAYMENT] Увага: ROAPP_CASHFLOWITEM_ID не налаштований в .env — створення оплат неможливе.'
-  );
-}
+const ROAPP_CASHBOX_ID = process.env.ROAPP_CASHBOX_ID; // наприклад: 360320
+const ROAPP_CASHFLOW_ITEM_ID = process.env.ROAPP_CASHFLOW_ITEM_ID; // наприклад: 2811743
 
 /**
- * Створює платіж в ROAPP, який привʼязується до замовлення (order_id).
+ * Створює платіж у ROAPP, прив'язаний до конкретного замовлення.
  *
- * ПАРАМЕТРИ:
- *   - orderId: ID замовлення в ROAPP (у тебе це той самий номер, який ми передаємо в Monobank як reference)
- *   - amount: сума в гривнях (НЕ в копійках)
- *   - customerName: (необовʼязково) імʼя клієнта для коментаря
+ * @param {Object} params
+ * @param {string|number} params.orderId    - ID замовлення в ROAPP (order.id / reference)
+ * @param {number}        params.amount     - сума в гривнях (НЕ в копійках)
+ * @param {string}        [params.description] - опис платежу, який буде видно в касі
+ *
+ * Повертає data з ROAPP.
  */
-async function createRoappPaymentForOrder({ orderId, amount, customerName }) {
-  if (!ROAPP_CASHBOX_ID || !ROAPP_CASHFLOWITEM_ID) {
+async function createRoappPaymentForOrder({ orderId, amount, description }) {
+  if (!ROAPP_CASHBOX_ID || !ROAPP_CASHFLOW_ITEM_ID) {
     console.warn(
-      '[ROAPP][PAYMENT] Пропущено створення платежу — не задані ROAPP_CASHBOX_ID або ROAPP_CASHFLOWITEM_ID.'
+      '[ROAPP][PAYMENT] Не налаштовані ROAPP_CASHBOX_ID або ROAPP_CASHFLOW_ITEM_ID. ' +
+        'Платіж у ROAPP створений не буде.'
     );
     return null;
   }
 
-  const numericAmount = Number(amount);
-  if (!numericAmount || !Number.isFinite(numericAmount)) {
-    console.warn(
-      '[ROAPP][PAYMENT] Некоректна сума для платежу:',
-      amount
+  if (!orderId || !amount) {
+    throw new Error(
+      '[ROAPP][PAYMENT] Потрібно передати orderId та amount для створення платежу.'
     );
-    return null;
   }
 
-  const comment = `Оплата замовлення №${orderId} через Monobank (BitZone${customerName ? `, клієнт: ${customerName}` : ''
-    })`;
+  const numericOrderId = Number(orderId);
+  const amountNumber = Number(amount);
 
-  // ⚠ Структура тіла базується на документації Create Payment:
-  // мінімально: amount, cashflow_item_id, order_id, comment
+  if (!Number.isFinite(numericOrderId) || !Number.isFinite(amountNumber)) {
+    throw new Error(
+      '[ROAPP][PAYMENT] orderId та amount мають бути числовими значеннями.'
+    );
+  }
+
   const payload = {
-    amount: numericAmount,                      // сума в гривнях
-    cashflow_item_id: Number(ROAPP_CASHFLOWITEM_ID),
-    order_id: Number(orderId),
-    comment,
-    // date можна не задавати — ROAPP візьме поточну, але на всяк випадок:
-    date: new Date().toISOString(),
+    amount: Number(amountNumber.toFixed(2)), // сума в гривнях, з двома знаками після коми
+    cashflow_item_id: Number(ROAPP_CASHFLOW_ITEM_ID),
+    order_id: numericOrderId,
+    comment:
+      description ||
+      `Оплата за замовлення #${numericOrderId} з інтернет-магазину BitZone`,
   };
-
-  console.log('[ROAPP][PAYMENT] Створюємо платіж для замовлення в ROAPP:', {
-    cashboxId: ROAPP_CASHBOX_ID,
-    payload,
-  });
 
   try {
     const { data } = await roappApi.post(
-      `cashbox/${ROAPP_CASHBOX_ID}/payment`,
+      `/cashbox/${ROAPP_CASHBOX_ID}/payment`,
       payload
     );
 
-    console.log('[ROAPP][PAYMENT] Платіж успішно створено в ROAPP:', data);
+    console.log('[ROAPP][PAYMENT] Створено платіж:', {
+      orderId: numericOrderId,
+      amount: payload.amount,
+      cashboxId: ROAPP_CASHBOX_ID,
+      cashflowItemId: ROAPP_CASHFLOW_ITEM_ID,
+      roappPaymentId: data?.id,
+    });
 
     return data;
   } catch (err) {
@@ -77,7 +71,7 @@ async function createRoappPaymentForOrder({ orderId, amount, customerName }) {
       data: err.response?.data,
     });
 
-    // Не валимо весь процес — просто даємо знати, що в ROAPP не записано
+    // пробрасываем помилку наверх — її вже акуратно обробить контролер
     throw err;
   }
 }

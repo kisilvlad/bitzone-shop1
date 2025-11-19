@@ -98,23 +98,18 @@ export default function Cart() {
     }
   }, [formData.delivery]);
 
-  // Якщо повернулися з Monobank (redirectUrl)
+  // Старий сценарій з paymentStatus у URL (можна залишити як fallback)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentStatus = params.get('paymentStatus');
     const orderIdFromUrl = params.get('orderId');
 
     if (paymentStatus === 'success' && checkoutStep !== 'success') {
-      // збережемо суму на момент оформлення
       setSuccessGrandTotal(total);
       if (orderIdFromUrl) {
         setOrderNumber(orderIdFromUrl);
       }
-
-      // очищаємо кошик, щоб не дублювати замовлення
       dispatch(clearCart());
-
-      // показуємо екран успіху
       setCheckoutStep('success');
     }
   }, [location.search, checkoutStep, total, dispatch]);
@@ -200,11 +195,13 @@ export default function Cart() {
   }, [formData.delivery]);
 
   const handleCheckout = async () => {
+    // крок 1: з кошика → у форму
     if (checkoutStep === 'cart') {
       setCheckoutStep('form');
       return;
     }
 
+    // крок 2: вже на формі → відправка
     if (!validateForm() || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -212,13 +209,12 @@ export default function Cart() {
     const normalizedFormData = {
       ...formData,
       phone: normalizePhoneNumber(formData.phone),
-      payment: mapPaymentForBackend(formData.payment),
+      payment: mapPaymentForBackend(formData.payment), // 'cash-on-delivery' або 'card'
     };
 
-    // Збережемо суму для екрана успіху
+    // Збережемо суму для екрана успіху (готівка)
     setSuccessGrandTotal(total);
 
-    // Підготуємо дані для бекенду (створення замовлення + ROAPP)
     const orderPayload = {
       customerData: normalizedFormData,
       cartItems: items.map((item) => ({
@@ -234,7 +230,7 @@ export default function Cart() {
       const config = { headers: {} };
       if (token) config.headers.Authorization = `Bearer ${token}`;
 
-      // 1) Створюємо замовлення (з ROAPP інтеграцією) як і раніше
+      // 1) Створюємо замовлення (і в ROAPP теж)
       const res = await axios.post('/api/orders', orderPayload, config);
 
       const backendOrderNumber =
@@ -248,41 +244,46 @@ export default function Cart() {
         res?.data?.id ||
         backendOrderNumber;
 
-      setOrderNumber(backendOrderNumber);
+      const paymentUrl =
+        res?.data?.paymentUrl ||
+        res?.data?.publicUrl ||
+        null;
 
-      // 2) Якщо обрано онлайн-оплату — створюємо інвойс Monobank
-      if (normalizedFormData.payment === 'card') {
+      setOrderNumber(backendOrderNumber || backendOrderId);
+
+      // 2) Якщо обрана online-оплата — створюємо інвойс Monobank
+      if (normalizedFormData.payment === 'card' && backendOrderId) {
         try {
-          const payRes = await axios.post(
+          const invoiceRes = await axios.post(
             '/api/payments/monobank/invoice',
             {
               orderId: backendOrderId,
-              // Monobank очікує суму в копійках
-              amount: Math.round(total * 100),
+              amount: Math.round(total * 100), // сума в КОПІЙКАХ
+              orderNumber: backendOrderNumber,
             },
             config
           );
 
-          const payUrl =
-            payRes?.data?.pageUrl ||
-            payRes?.data?.payUrl ||
-            payRes?.data?.url;
+          const invoiceData = invoiceRes?.data;
 
-          if (payUrl) {
-            // Перенаправляємо користувача на сторінку оплати Monobank
-            window.location.href = payUrl;
-            return; // далі не показуємо локальний success-екран
+          if (invoiceData?.ok && invoiceData?.pageUrl) {
+            // редіректимо на сторінку оплати Monobank
+            window.location.href = invoiceData.pageUrl;
+            return;
           }
-        } catch (payErr) {
-          console.error('Помилка створення платежу в Monobank:', payErr);
-          alert(
-            'Замовлення створене, але не вдалося створити онлайн-оплату. ' +
-              'Ви можете оплатити при отриманні або звернутися до нас.'
-          );
+        } catch (invoiceErr) {
+          console.error('Помилка при створенні рахунку Monobank:', invoiceErr);
+          // продовжимо нижче: спробуємо fallback на ROAPP або локальний success
+        }
+
+        // Fallback: якщо Monobank не дав pageUrl, але є public-url ROAPP
+        if (paymentUrl) {
+          window.location.href = paymentUrl;
+          return;
         }
       }
 
-      // 3) Звичайний сценарій (оплата при отриманні або fallback)
+      // 3) Звичайний сценарій (готівка при отриманні, або online без редіректу)
       dispatch(clearCart());
       setCheckoutStep('success');
     } catch (err) {

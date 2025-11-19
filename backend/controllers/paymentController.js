@@ -1,72 +1,164 @@
 // backend/controllers/paymentController.js
+// Контролер для роботи з оплатою через Monobank + створення платежу в ROAPP
 
-const axios = require('axios');
 const asyncHandler = require('express-async-handler');
+const monobankApi = require('../utils/monobankApi');
 const { createRoappPaymentForOrder } = require('../services/roappPaymentService');
 
-const MONOBANK_TOKEN = process.env.MONOBANK_TOKEN;
-const MONOBANK_API_BASE = 'https://api.monobank.ua/api/merchant';
-
-// ⛔ На всякий випадок — щоб відразу бачити, якщо токен не підтягується
-if (!MONOBANK_TOKEN) {
-  console.warn(
-    '[MONOBANK] Увага: MONOBANK_TOKEN не налаштований в .env. ' +
-      'Оплата карткою працювати не буде.'
-  );
-}
+// -----------------------------
+// Внутрішнє сховище стану оплат
+// -----------------------------
+/**
+ * monobankInvoices:
+ *   key: orderId (string)
+ *   value: {
+ *     orderId: string | number,
+ *     invoiceId: string,
+ *     amount: number,           // у копійках
+ *     ccy: number,              // ISO 4217, зазвичай 980
+ *     status: string,           // created | success | fail | expired | ...
+ *     roappPaymentCreated: boolean,
+ *     lastUpdate: Date,
+ *   }
+ */
+const monobankInvoices = new Map();
 
 /**
- * POST /api/payments/monobank/invoice
- * Створюємо інвойс Monobank під конкретне замовлення.
- * Очікуємо body: { orderId, amount } (amount у копійках).
+ * Допоміжна функція: гарантує, що для переданого запису буде створено оплату в ROAPP.
+ * Викликається як із webhook, так і з ручної перевірки статусу.
  */
+async function ensureRoappPaymentForEntry(entry) {
+  if (!entry) return null;
+
+  if (entry.status !== 'success') {
+    return null;
+  }
+
+  if (entry.roappPaymentCreated) {
+    return null;
+  }
+
+  const amountInUAH = entry.amount ? entry.amount / 100 : null;
+
+  if (!amountInUAH) {
+    console.warn(
+      '[MONO→ROAPP] Не вдалось обчислити суму в грн для створення платежу в ROAPP:',
+      entry
+    );
+    return null;
+  }
+
+  try {
+    const roappResult = await createRoappPaymentForOrder({
+      orderId: entry.orderId,
+      amount: amountInUAH,
+      description: `Оплата через Monobank, invoiceId ${entry.invoiceId}`,
+    });
+
+    entry.roappPaymentCreated = true;
+    entry.lastUpdate = new Date();
+
+    console.log('[MONO→ROAPP] Створено оплату в ROAPP:', {
+      orderId: entry.orderId,
+      amountInUAH,
+      roappPaymentId: roappResult?.id,
+    });
+
+    return roappResult;
+  } catch (err) {
+    console.error('[MONO→ROAPP] Помилка при створенні платежу в ROAPP:', {
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    // помилку не пробрасываем наверх, щоб не зламати основний сценарій
+    return null;
+  }
+}
+
+// --------------------------------------------------
+// 1. Створення рахунку (інвойсу) в Monobank
+//    POST /api/payments/monobank/invoice
+//    body: { orderId, amount }  (amount у копійках)
+// --------------------------------------------------
 const createMonobankInvoice = asyncHandler(async (req, res) => {
   const { orderId, amount } = req.body;
 
   if (!orderId || !amount) {
     return res.status(400).json({
-      message: 'Необхідні параметри: orderId та amount (у копійках).',
+      ok: false,
+      message: 'Потрібно передати orderId та amount (в копійках).',
     });
   }
 
-  if (!MONOBANK_TOKEN) {
-    return res.status(500).json({
-      message: 'Платіжний сервіс тимчасово недоступний.',
-    });
-  }
+  const orderIdStr = String(orderId);
 
-  const redirectUrl = `https://bitzone.com.ua/payment-result?orderId=${orderId}`;
-  const webHookUrl = `https://bitzone.com.ua/api/payments/monobank/webhook`;
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'https://bitzone.com.ua';
+  const BACKEND_PUBLIC_URL =
+    process.env.BACKEND_PUBLIC_URL || process.env.API_PUBLIC_URL || '';
 
-  const payload = {
-    amount: Number(amount),
-    ccy: 980, // UAH
-    merchantPaymInfo: {
-      reference: String(orderId), // це будемо шукати у виписці (statement)
-      destination: `Оплата замовлення №${orderId} на BitZone`,
-      comment: `Оплата замовлення №${orderId} на BitZone`,
-    },
-    redirectUrl,
-    webHookUrl,
-  };
+  const baseRedirectUrl = `${FRONTEND_URL.replace(/\/$/, '')}/payment-result`;
 
-  console.log('[MONOBANK] Створюємо інвойс. Payload:', payload);
+  // Користувача все одно буде переадресовано на redirectUrl,
+  // а successUrl / failUrl просто зручні, якщо ти захочеш їх обробляти окремо.
+  const redirectUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
+    orderIdStr
+  )}`;
+  const successUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
+    orderIdStr
+  )}&status=success`;
+  const failUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
+    orderIdStr
+  )}&status=fail`;
+
+  const webHookUrl = BACKEND_PUBLIC_URL
+    ? `${BACKEND_PUBLIC_URL.replace(/\/$/, '')}/api/payments/monobank/webhook`
+    : undefined;
 
   try {
-    const { data } = await axios.post(
-      `${MONOBANK_API_BASE}/invoice/create`,
-      payload,
-      {
-        headers: {
-          'X-Token': MONOBANK_TOKEN,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const payload = {
+      amount, // вже у копійках
+      ccy: 980,
+      merchantPaymInfo: {
+        redirectUrl,
+        successUrl,
+        failUrl,
+        ...(webHookUrl ? { webHookUrl } : {}),
+      },
+    };
 
-    console.log('[MONOBANK] Інвойс створено:', data);
+    const { data } = await monobankApi.post('invoice/create', payload);
 
-    return res.status(201).json({
+    if (!data || !data.invoiceId || !data.pageUrl) {
+      console.error(
+        '[MONOBANK] Неочікувана відповідь при створенні інвойсу:',
+        data
+      );
+      return res.status(502).json({
+        ok: false,
+        message: 'Monobank повернув неочікувану відповідь при створенні інвойсу.',
+      });
+    }
+
+    monobankInvoices.set(orderIdStr, {
+      orderId: orderIdStr,
+      invoiceId: data.invoiceId,
+      amount,
+      ccy: 980,
+      status: 'created',
+      roappPaymentCreated: false,
+      lastUpdate: new Date(),
+    });
+
+    console.log('[MONOBANK] Створено інвойс:', {
+      orderId: orderIdStr,
+      invoiceId: data.invoiceId,
+      pageUrl: data.pageUrl,
+      amount,
+    });
+
+    return res.json({
+      ok: true,
       invoiceId: data.invoiceId,
       pageUrl: data.pageUrl,
     });
@@ -77,147 +169,197 @@ const createMonobankInvoice = asyncHandler(async (req, res) => {
       data: err.response?.data,
     });
 
-    return res.status(500).json({
-      message:
-        'Не вдалося створити платіж. Спробуйте ще раз або виберіть інший спосіб оплати.',
+    return res.status(502).json({
+      ok: false,
+      message: 'Не вдалося створити рахунок в Monobank.',
     });
   }
 });
 
-/**
- * POST /api/payments/monobank/webhook
- * Webhook від Monobank (успішний/неуспішний платіж, reversals тощо).
- * Поки що просто логую, далі тут можна буде додати логіку оновлення ROAPP.
- */
+// --------------------------------------------------
+// 2. Webhook від Monobank
+//    POST /api/payments/monobank/webhook
+//    Monobank шле тіло такого ж формату, як і відповідь invoice/status
+// --------------------------------------------------
 const monobankWebhook = asyncHandler(async (req, res) => {
   try {
-    console.log('[MONOBANK][WEBHOOK] Отримано webhook:', req.body);
+    const payload = req.body;
 
-    // TODO:
-    // - знайти замовлення по reference / invoiceId
-    // - оновити статус оплати в БД
-    // - створити платіж у ROAPP (якщо ще не створений)
+    console.log('[MONOBANK][WEBHOOK] Отримано webhook:', payload);
 
-    res.status(200).json({ ok: true });
+    const invoiceId = payload?.invoiceId;
+    const status = payload?.status;
+    const amount = payload?.amount;
+    const ccy = payload?.ccy;
+
+    if (!invoiceId || !status) {
+      console.warn(
+        '[MONOBANK][WEBHOOK] В тілі webhook немає invoiceId або status.'
+      );
+      return res.json({ ok: true });
+    }
+
+    // шукаємо запис по orderId, у якого такий invoiceId
+    let entry = null;
+    let entryKey = null;
+
+    for (const [key, value] of monobankInvoices.entries()) {
+      if (value.invoiceId === invoiceId) {
+        entry = value;
+        entryKey = key;
+        break;
+      }
+    }
+
+    if (!entry) {
+      console.warn(
+        '[MONOBANK][WEBHOOK] Не знайшов запис по цьому invoiceId у локальному кеші:',
+        invoiceId
+      );
+      // створимо "мінімальний" запис, щоб далі його міг прочитати /status
+      entry = {
+        orderId: null,
+        invoiceId,
+        amount: amount ?? null,
+        ccy: ccy ?? 980,
+        status,
+        roappPaymentCreated: false,
+        lastUpdate: new Date(),
+      };
+      entryKey = `invoice:${invoiceId}`;
+      monobankInvoices.set(entryKey, entry);
+    } else {
+      entry.status = status;
+      if (typeof amount === 'number') {
+        entry.amount = amount;
+      }
+      if (typeof ccy === 'number') {
+        entry.ccy = ccy;
+      }
+      entry.lastUpdate = new Date();
+
+      monobankInvoices.set(entryKey, entry);
+    }
+
+    // якщо платіж успішний — пробуємо створити платіж у ROAPP
+    if (entry.orderId && status === 'success') {
+      await ensureRoappPaymentForEntry(entry);
+    }
+
+    res.json({ ok: true });
   } catch (err) {
-    console.error('[MONOBANK][WEBHOOK] Помилка обробки webhook:', err);
-    res.status(500).json({ ok: false });
+    console.error('[MONOBANK][WEBHOOK] Помилка обробки webhook:', {
+      message: err.message,
+    });
+    // все одно повертаємо 200, щоб Monobank не ретраїв безкінечно
+    res.json({ ok: true });
   }
 });
 
-/**
- * GET /api/payments/monobank/status?orderId=XXXX
- *
- * Перевіряємо оплату через виписку Monobank (statement) по полю "reference",
- * яке ми задаємо = orderId при створенні інвойсу.
- *
- * Якщо платіж знайдено зі статусом success:
- *   - повертаємо paid: true
- *   - і намагаємось створити платіж у ROAPP, прив'язаний до цього замовлення.
- */
+// --------------------------------------------------
+// 3. Перевірка статусу рахунку для фронтенда
+//    GET /api/payments/monobank/status?orderId=123
+//    Відповідь: { ok, paid, status, amount, ccy, invoiceId }
+//    + при статусі success намагаємося створити платіж у ROAPP
+// --------------------------------------------------
 const getMonobankPaymentStatus = asyncHandler(async (req, res) => {
-  const { orderId } = req.query;
+  const orderId = req.query.orderId;
 
   if (!orderId) {
-    return res.status(400).json({ message: 'Не передано orderId.' });
+    return res.status(400).json({
+      ok: false,
+      message: 'Не передано orderId.',
+    });
   }
 
-  if (!MONOBANK_TOKEN) {
-    console.error('[MONOBANK] MONOBANK_TOKEN не налаштовано в .env');
-    return res
-      .status(500)
-      .json({ message: 'Платіжний сервіс тимчасово недоступний.' });
-  }
+  const orderIdStr = String(orderId);
+  let entry = monobankInvoices.get(orderIdStr);
+
+  // якщо ще немає запису — можливо, сервер рестартнувся,
+  // спробуємо напряму сходити в Monobank, якщо відомий invoiceId в query
+  const directInvoiceId = req.query.invoiceId;
 
   try {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const fromSec = nowSec - 3 * 24 * 60 * 60; // останні 3 дні з запасом
+    if (!entry && directInvoiceId) {
+      const { data } = await monobankApi.get('invoice/status', {
+        params: { invoiceId: directInvoiceId },
+      });
 
-    console.log('[MONOBANK] Перевірка оплати по orderId (reference):', orderId, {
-      from: fromSec,
-      to: nowSec,
-    });
+      entry = {
+        orderId: orderIdStr,
+        invoiceId: data.invoiceId || directInvoiceId,
+        amount: data.amount,
+        ccy: data.ccy || 980,
+        status: data.status,
+        roappPaymentCreated: false,
+        lastUpdate: new Date(),
+      };
 
-    const { data } = await axios.get(`${MONOBANK_API_BASE}/statement`, {
-      headers: {
-        'X-Token': MONOBANK_TOKEN,
-      },
-      params: {
-        from: fromSec,
-        to: nowSec,
-      },
-    });
+      monobankInvoices.set(orderIdStr, entry);
+    }
 
-    const list = Array.isArray(data?.list) ? data.list : [];
-
-    // шукаємо всі транзакції з reference == orderId
-    const related = list.filter(
-      (tx) => String(tx.reference) === String(orderId)
-    );
-
-    if (!related.length) {
-      console.log(
-        '[MONOBANK] Не знайдено платежу з reference = orderId:',
-        orderId
-      );
+    if (!entry) {
       return res.json({
         ok: true,
         paid: false,
         status: 'not_found',
+        amount: null,
+        ccy: 980,
+        invoiceId: null,
       });
     }
 
-    // беремо останню транзакцію по часу
-    const payment = related[related.length - 1];
-    const isSuccess = payment.status === 'success';
-
-    console.log('[MONOBANK] Знайдено платіж:', payment);
-
-    let roappPaymentOk = false;
-    let roappPaymentError = null;
-
-    if (isSuccess) {
-      // Monobank amount — в копійках, переводимо в гривні
-      const amountInUAH = Math.round(Math.abs(payment.amount)) / 100;
-
+    // Якщо статус ще не success — можна додатково пересинхронізувати з Monobank
+    if (entry.status !== 'success' && entry.invoiceId) {
       try {
-        const roappResult = await createRoappPaymentForOrder({
-          orderId,                 // тут у тебе orderId = id замовлення в ROAPP (reference)
-          amount: amountInUAH,
-          customerName: '',        // можна пізніше підтягнути імʼя з БД
+        const { data } = await monobankApi.get('invoice/status', {
+          params: { invoiceId: entry.invoiceId },
         });
 
-        roappPaymentOk = !!roappResult;
-      } catch (err) {
-        roappPaymentError = {
-          message: err.message,
-          status: err.response?.status,
-          data: err.response?.data,
-        };
+        entry.status = data.status;
+        if (typeof data.amount === 'number') {
+          entry.amount = data.amount;
+        }
+        if (typeof data.ccy === 'number') {
+          entry.ccy = data.ccy;
+        }
+        entry.lastUpdate = new Date();
+
+        monobankInvoices.set(orderIdStr, entry);
+      } catch (statusErr) {
+        console.warn(
+          '[MONOBANK] Не вдалося оновити статус інвойсу з Monobank:',
+          statusErr.message
+        );
       }
+    }
+
+    // Якщо платіж успішний — гарантуємо створення платежу в ROAPP
+    let roappResult = null;
+    if (entry.status === 'success') {
+      roappResult = await ensureRoappPaymentForEntry(entry);
     }
 
     return res.json({
       ok: true,
-      paid: isSuccess,
-      status: payment.status, // success / reversed / processing / fail ...
-      amount: payment.amount,
-      ccy: payment.ccy,
-      invoiceId: payment.invoiceId,
-      maskedPan: payment.maskedPan,
-      date: payment.date,
-      roappPaymentOk,
-      roappPaymentError,
+      paid: entry.status === 'success',
+      status: entry.status,
+      amount: entry.amount,
+      ccy: entry.ccy,
+      invoiceId: entry.invoiceId,
+      roappPaymentCreated: !!entry.roappPaymentCreated,
+      roappPayment: roappResult || null,
     });
   } catch (err) {
-    console.error('[MONOBANK] Помилка при перевірці оплати через statement:', {
+    console.error('[MONOBANK] Помилка при перевірці статусу інвойсу:', {
       message: err.message,
       status: err.response?.status,
       data: err.response?.data,
     });
 
-    return res.status(500).json({
-      message: 'Не вдалося перевірити оплату. Спробуйте ще раз пізніше.',
+    return res.status(502).json({
+      ok: false,
+      message: 'Платіжний сервіс тимчасово недоступний.',
     });
   }
 });

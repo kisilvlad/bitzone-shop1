@@ -257,7 +257,6 @@ export default function PaymentResult() {
                 flexWrap: 'wrap',
               }}
             >
-              {/* 🔁 ТУТ ОНОВЛЕНО: перенаправляємо на /account */}
               <Link to="/account" className="btn btn-green" style={primaryCta({ full: false })}>
                 Перейти до моїх замовлень
               </Link>
