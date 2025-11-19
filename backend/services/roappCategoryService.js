@@ -1,5 +1,10 @@
 // backend/services/roappCategoryService.js
+// Синхронізація категорій ROAPP у дві таблиці:
+// 1) RoappCategory — повне дерево з parentId, path, type
+// 2) Category      — плоский список (root product categories) для простих списків
+
 const RoappCategory = require('../models/RoappCategory');
+const Category = require('../models/categoryModel');
 const roappApi = require('../utils/roappApi');
 
 /**
@@ -13,17 +18,19 @@ async function syncRoappCategories(options = {}) {
   try {
     // 1. Продуктові категорії
     const productRes = await roappApi.get('/warehouse/categories/');
-    const productCategories = Array.isArray(productRes.data)
-      ? productRes.data
-      : productRes.data?.results || [];
+    const productRaw = productRes.data;
+    const productCategories = Array.isArray(productRaw)
+      ? productRaw
+      : productRaw?.results || productRaw?.data || [];
 
     // 2. (опціонально) сервісні категорії
     let serviceCategories = [];
     if (includeServiceCategories) {
       const serviceRes = await roappApi.get('/services/categories/');
-      serviceCategories = Array.isArray(serviceRes.data)
-        ? serviceRes.data
-        : serviceRes.data?.results || [];
+      const serviceRaw = serviceRes.data;
+      serviceCategories = Array.isArray(serviceRaw)
+        ? serviceRaw
+        : serviceRaw?.results || serviceRaw?.data || [];
     }
 
     const all = [
@@ -38,8 +45,6 @@ async function syncRoappCategories(options = {}) {
     const bulkOps = [];
 
     for (const { raw, type } of all) {
-      // ⚠️ Тут ми не знаємо точну структуру відповіді,
-      // тому дістаємо поля максимально "універсально"
       const roappId = raw.id ?? raw.pk ?? raw.roapp_id;
       const name = raw.name ?? raw.title ?? raw.label;
       const parentId =
@@ -50,11 +55,10 @@ async function syncRoappCategories(options = {}) {
         null;
 
       if (!roappId || !name) {
-        console.warn('[ROAPP] Категорія без id або name, скіпаю:', raw);
+        console.warn('[ROAPP] Категорія без id або name, пропускаю:', raw);
         continue;
       }
 
-      // простий slug
       const slug =
         (raw.slug ||
           String(name)
@@ -90,7 +94,7 @@ async function syncRoappCategories(options = {}) {
     await RoappCategory.bulkWrite(bulkOps);
     console.log(`✅ [ROAPP] Синхронізація категорій завершена. Оновлено/створено: ${bulkOps.length}`);
 
-    // Другим проходом рахуємо path (шлях предків)
+    // 2-й прохід: рахуємо path (шлях предків)
     const categories = await RoappCategory.find().lean();
     const byId = new Map(categories.map((c) => [c.roappId, c]));
 
@@ -121,13 +125,34 @@ async function syncRoappCategories(options = {}) {
       await RoappCategory.bulkWrite(pathUpdates);
       console.log('✅ [ROAPP] Оновлено path для категорій');
     }
+
+    // 3. Оновлюємо плоску таблицю Category (тільки root product categories)
+    const rootProductCategories = categories.filter(
+      (c) => !c.parentId && c.type === 'product' && (c.isActive ?? true)
+    );
+
+    if (rootProductCategories.length) {
+      const catBulk = rootProductCategories.map((c) => ({
+        updateOne: {
+          filter: { roappId: c.roappId },
+          update: {
+            $set: {
+              roappId: c.roappId,
+              name: c.name,
+            },
+          },
+          upsert: true,
+        },
+      }));
+      await Category.bulkWrite(catBulk);
+      console.log(
+        `✅ [Mongo] Оновлено/створено простих категорій для фронтенду: ${catBulk.length}`
+      );
+    }
   } catch (err) {
     console.error('❌ [ROAPP] Помилка при синхронізації категорій:', err.message);
     if (err.response?.data) {
-      console.error(
-        '[ROAPP] Відповідь API:',
-        JSON.stringify(err.response.data, null, 2)
-      );
+      console.error('[ROAPP] Відповідь API:', JSON.stringify(err.response.data, null, 2));
     }
     throw err;
   }
