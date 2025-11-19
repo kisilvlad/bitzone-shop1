@@ -62,9 +62,11 @@ const authLimiter = rateLimit({
   }
 });
 
+const categoryRoutes = require('./routes/categoryRoutes');
 const novaPostRoutes = require('./routes/novaPostRoutes');
 
 // ---------- МАРШРУТИ (як і було) ----------
+app.use('/api/categories', categoryRoutes);
 app.use('/api/novapost', novaPostRoutes);
 app.use('/api/auth', authLimiter, require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));

@@ -1,4 +1,4 @@
-// src/components/Header.jsx — !!! ФІНАЛЬНА ВЕРСІЯ: ПЛАВНА АНІМАЦІЯ + ПРАВИЛЬНИЙ Z-INDEX !!!
+// src/components/Header.jsx — ОНОВЛЕНО: ще компактніше на ПК, щоб нічого не вилазило
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -20,14 +20,12 @@ export default function Header() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   
-  // ——— Плавне приховування/поява хедера під час скролу
   const [showHeader, setShowHeader] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
-  const headerRef = useRef(null); // <--- 1. Реф для хедера
-  const [headerHeight, setHeaderHeight] = useState(80); // <--- 2. Стан для висоти хедера
+  const headerRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(80);
 
   useEffect(() => {
-    // 3. Вимірюємо висоту хедера
     if (headerRef.current) {
       setHeaderHeight(headerRef.current.offsetHeight);
     }
@@ -42,17 +40,14 @@ export default function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
   
-  // ——— Закривати мобільне меню при зміні маршруту
   useEffect(() => { setOpen(false); }, [loc.pathname]);
   
-  // ——— Закривати по ESC
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && setOpen(false);
     if (open) document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
   
-  // ——— Видимість назви на мобільних/ПК через matchMedia
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767.98px)');
@@ -62,7 +57,6 @@ export default function Header() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
   
-  // ——— Desktop breakpoint (>=1024px)
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
@@ -72,10 +66,8 @@ export default function Header() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
   
-  // ——— Тема (dark/light) через хук
   const [theme, toggleTheme] = useTheme();
   
-  // ——— Обробники
   const handleLogout = () => {
     dispatch(logout());
     setOpen(false);
@@ -88,7 +80,6 @@ export default function Header() {
     setOpen(false);
   };
   
-  // ——— Дані меню
   const menuItems = [
     { label: 'Playstation', subItems: [
       { label: 'Playstation 5', link: '/products?search=Playstation 5&types=consoles' },
@@ -100,14 +91,12 @@ export default function Header() {
     { label: 'Xbox', subItems: [
       { label: 'Xbox Series X/S', link: '/products?search=Xbox Series&types=consoles' },
       { label: 'Xbox One', link: '/products?search=Xbox One&types=consoles' },
-      { label: 'Xbox 360', link: '/products?search=Xbox 360&types=consoles' },
       { label: 'Аксесуари', link: '/products?platforms=xbox&types=accs' },
       { label: 'Ігри', link: '/products?platforms=xbox&types=games' },
     ]},
     { label: 'Nintendo', subItems: [
       { label: 'Nintendo Switch', link: '/products?search=Nintendo Switch&types=consoles' },
       { label: 'DS/3DS', link: '/products?search=Nintendo 3DS&types=consoles' },
-      { label: 'GameBoy', link: '/products?search=GameBoy&types=consoles' },
       { label: 'Аксесуари', link: '/products?platforms=nintendo&types=accs' },
       { label: 'Ігри', link: '/products?platforms=nintendo&types=games' },
     ]},
@@ -115,47 +104,56 @@ export default function Header() {
       { label: 'Консолі', link: '/products?platforms=steamdeck&types=consoles' },
       { label: 'Аксесуари', link: '/products?platforms=steamdeck&types=accs' },
     ]},
+    { label: 'Anime&Cards', subItems: [
+      { label: 'Аніме фігурки', link: '/products?search=аніме фігурка' },
+      { label: 'Колекційні карти', link: '/products?search=карти колекційні' },
+      { label: 'Сувеніри та мерч', link: '/products?search=аніме мерч' },
+      { label: 'Манга / Артбуки', link: '/products?search=манга' },
+    ]},
+    { label: 'Енергія та світло', subItems: [
+      { label: 'Повербанки', link: '/products?search=powerbank' },
+      { label: 'Світильники RGB та лампи', link: '/products?search=ігрова лампа' },
+      { label: 'LED-стрічки та неон', link: '/products?search=led стрічка' },
+      { label: 'Ліхтарики,аксесуари', link: '/products?search=ліхтарик' },
+      { label: 'Портативні зарядні станції', link: '/products?search=зарядна станція' },
+    ]},
   ];
   
-  // ——— Блокування скролу фону
   useEffect(() => {
     document.body.classList.toggle('menu-open', open && !isDesktop);
     document.body.style.overflow = open && !isDesktop ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; document.body.classList.remove('menu-open'); };
   }, [open, isDesktop]);
   
-  // ——— Стиль назви
   const brandNameStyle = {
     fontFamily: 'Russo One, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
     lineHeight: 1,
-    fontSize: 'clamp(24px, 5vw, 44px)',
-    letterSpacing: '0.5px',
+    fontSize: 'clamp(18px, 2.8vw, 26px)', // ще дрібніше
+    letterSpacing: '0.4px',
     color: 'var(--brand-text)',
     textShadow: '0 1px 2px rgba(0,0,0,.25)',
     filter: 'drop-shadow(0 0 0.35px rgba(0,0,0,.25))',
   };
 
-  // --- Анімація мобільного меню (плавна) ---
   const mobileMenuVariants = {
     closed: {
-      y: '-100%', // Починаємо над екраном
+      y: '-100%',
       opacity: 0,
-      transition: { duration: 0.3, ease: [0.32, 0, 0.67, 0] } // Ease-in
+      transition: { duration: 0.3, ease: [0.32, 0, 0.67, 0] }
     },
     open: {
-      y: '0%', // З'являємося на екрані
+      y: '0%',
       opacity: 1,
-      transition: { duration: 0.4, ease: [0.33, 1, 0.68, 1] } // Ease-out
+      transition: { duration: 0.4, ease: [0.33, 1, 0.68, 1] }
     }
   };
   
   return (
     <>
-      {/* Overlay для мобільного меню */}
       <AnimatePresence>
         {open && !isDesktop && (
           <motion.div
-            className="menu-overlay" // z-index: 990
+            className="menu-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -166,48 +164,82 @@ export default function Header() {
         )}
       </AnimatePresence>
 
-      {/* 4. Додаємо ref до хедера */}
-      <header ref={headerRef} className={`header ${showHeader ? 'header-show' : 'header-hide'}`}>
+      <header
+        ref={headerRef}
+        className={`header ${showHeader ? 'header-show' : 'header-hide'} ${theme === 'dark' ? 'header-dark' : 'header-light'}`}
+        style={{
+          background: 'var(--header-bg)',
+          borderBottom: '1px solid var(--header-border)',
+        }}
+      >
         <div
           className="container nav"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginLeft: isDesktop ? 7 : 0 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            marginLeft: isDesktop ? 4 : 0,
+          }}
         >
-          {/* ——— Бренд: гіфка + назва */}
           <div className="brand" style={{ display: 'flex', alignItems: 'center' }}>
             <Link
               to="/"
               className="brand-link"
               aria-label="BitZone — на головну"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
             >
               <img
                 src="/assets/bitzone-logo2.gif"
                 alt="BitZone"
                 className="brand-logo"
-                style={{ height: 76, width: 'auto', imageRendering: 'pixelated' }}
+                style={{ height: 56, width: 'auto', imageRendering: 'pixelated' }} // менший логотип
               />
-              <span className="brand-name" style={{ ...brandNameStyle, display: isMobile ? 'none' : 'inline' }}>
+              <span
+                className="brand-name"
+                style={{ ...brandNameStyle, display: isMobile ? 'none' : 'inline' }}
+              >
                 BitZone
               </span>
             </Link>
           </div>
 
-          {/* ——— Desktop меню */}
-          <nav className="menu-desktop" aria-label="Головне меню" style={{ display: isMobile ? 'none' : 'block' }}>
-            <ul style={{ display: 'flex', gap: 16, alignItems: 'center', listStyle: 'none', margin: 0, padding: 0 }}>
+          <nav
+            className="menu-desktop"
+            aria-label="Головне меню"
+            style={{ display: isMobile ? 'none' : 'block', flexShrink: 1 }}
+          >
+            <ul
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'center',
+                listStyle: 'none',
+                margin: 0,
+                padding: 0,
+                flexWrap: 'nowrap',
+              }}
+            >
               {menuItems.map((item, index) => (
                 <DesktopMenuItem key={index} item={item} addSep={index > 0} />
               ))}
             </ul>
           </nav>
 
-          {/* ——— Правий блок: пошук / бажане / кошик / бургер */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 10 : 12, flexWrap: 'nowrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: isDesktop ? 6 : 8,
+              flexWrap: 'nowrap',
+              flexShrink: 0,
+            }}
+          >
             {!isMobile && (
               <form onSubmit={onSearch}>
                 <input
                   className="input"
-                  style={{ width: 260 }}
+                  style={{ width: 190, fontSize: 12 }} // ще вужчий пошук
                   placeholder="Пошук..."
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -219,10 +251,26 @@ export default function Header() {
             <Link
               to="/wishlist"
               className="btn btn-wish"
-              style={{ position: 'relative', gap: 6, padding: '10px 16px', fontSize: 12, minWidth: 120, justifyContent: 'center' }}
+              style={{
+                position: 'relative',
+                gap: 3,
+                padding: '6px 10px',
+                fontSize: 10,
+                minWidth: 90, // вузькі кнопки
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
             >
-              Бажане
-              <span className="badge cart-badge" style={{ position: 'absolute', top: -8, right: -8, display: 'inline-flex' }}>
+              Бажане ❤
+              <span
+                className="badge cart-badge"
+                style={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -6,
+                  display: 'inline-flex',
+                }}
+              >
                 {wishlistQty}
               </span>
             </Link>
@@ -230,10 +278,26 @@ export default function Header() {
             <Link
               to="/cart"
               className="btn btn-green"
-              style={{ position: 'relative', gap: 6, padding: '10px 16px', fontSize: 12, minWidth: 120, justifyContent: 'center' }}
+              style={{
+                position: 'relative',
+                gap: 3,
+                padding: '6px 10px',
+                fontSize: 10,
+                minWidth: 90,
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
             >
-              Кошик
-              <span className="badge cart-badge" style={{ position: 'absolute', top: -8, right: -8, display: 'inline-flex' }}>
+              Кошик 🛒
+              <span
+                className="badge cart-badge"
+                style={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -6,
+                  display: 'inline-flex',
+                }}
+              >
                 {cartQty}
               </span>
             </Link>
@@ -241,17 +305,24 @@ export default function Header() {
             {isDesktop && (
               <>
                 <Link
-                  to={isAuthenticated ? "/account" : "/login"}
+                  to={isAuthenticated ? '/account' : '/login'}
                   className="btn-profile"
-                  aria-label={isAuthenticated ? "Перейти в профіль" : "Увійти"}
-                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}
+                  aria-label={isAuthenticated ? 'Перейти в профіль' : 'Увійти'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginLeft: 4,
+                    flexShrink: 0,
+                  }}
                 >
                   <span
                     style={{
                       display: 'inline-flex',
-                      padding: 2,
+                      padding: 1.5,
                       borderRadius: '9999px',
-                      background: 'linear-gradient(135deg, var(--accent-turquoise), var(--accent-purple))',
+                      background:
+                        'linear-gradient(135deg, var(--accent-turquoise), var(--accent-purple))',
                     }}
                   >
                     <span
@@ -259,15 +330,15 @@ export default function Header() {
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: 40,
-                        height: 40,
+                        width: 32,
+                        height: 32,
                         borderRadius: '9999px',
                         background: 'var(--surface-input)',
                         border: '1px solid var(--border-input)',
                         boxShadow: 'var(--shadow-card)',
                       }}
                     >
-                      <svg width="20" height="20" viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" role="img" aria-hidden="true">
                         <path
                           fill="currentColor"
                           d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-4.418 0-8 2.91-8 6.5 0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5 0-3.59-3.582-6.5-8-6.5z"
@@ -276,17 +347,22 @@ export default function Header() {
                     </span>
                   </span>
                 </Link>
-                <ThemeToggle theme={theme} onToggle={toggleTheme} variant="desktop" />
+                <ThemeToggle
+                  theme={theme}
+                  onToggle={toggleTheme}
+                  variant="desktop"
+                />
               </>
             )}
 
-            {/* Кнопка-бургер тепер має zIndex 992 (вище за меню) */}
             <motion.button
               className="btn-outline pixel-menu-button"
-              style={{ 
-                display: isDesktop ? 'none' : 'inline-flex', 
-                zIndex: 992, // <--- НАЙВИЩИЙ Z-INDEX
-                color: 'var(--header-icon-stroke)' 
+              style={{
+                display: isDesktop ? 'none' : 'inline-flex',
+                zIndex: 992,
+                color: 'var(--header-icon-stroke)',
+                alignSelf: 'flex-start',
+                marginTop: 4,
               }}
               onClick={() => setOpen((v) => !v)}
               initial={false}
@@ -297,63 +373,109 @@ export default function Header() {
               aria-controls="mobile-menu-panel"
             >
               <svg width="30" height="30" viewBox="0 0 30 30" role="img" aria-hidden="true">
-                <Path variants={{ closed: { d: 'M 2 8 L 28 8' }, open: { d: 'M 5 25 L 25 5' } }} animate={open ? 'open' : 'closed'} />
+                <Path
+                  variants={{ closed: { d: 'M 2 8 L 28 8' }, open: { d: 'M 5 25 L 25 5' } }}
+                  animate={open ? 'open' : 'closed'}
+                />
                 <Path
                   d="M 2 15 L 28 15"
                   variants={{ closed: { opacity: 1 }, open: { opacity: 0 } }}
                   animate={open ? 'open' : 'closed'}
                   transition={{ duration: 0.12 }}
                 />
-                <Path variants={{ closed: { d: 'M 2 22 L 28 22' }, open: { d: 'M 5 5 L 25 25' } }} animate={open ? 'open' : 'closed'} />
+                <Path
+                  variants={{ closed: { d: 'M 2 22 L 28 22' }, open: { d: 'M 5 5 L 25 25' } }}
+                  animate={open ? 'open' : 'closed'}
+                />
               </svg>
             </motion.button>
           </div>
         </div>
-        
-        {/* !!! МЕНЮ БУЛО ТУТ, АЛЕ МИ ЙОГО ВИНЕСЛИ !!! */}
-        
       </header>
 
-      {/* !!! МЕНЮ ТЕПЕР ТУТ, ПІСЛЯ ХЕДЕРА !!! */}
       <AnimatePresence>
         {open && !isDesktop && (
           <motion.div
             id="mobile-menu-panel"
-            className="mobile-menu" // Цей клас додає 'position: fixed' та z-index: 991
+            className="mobile-menu"
             key="mobile-menu"
             initial="closed"
             animate="open"
             exit="closed"
             variants={mobileMenuVariants}
             style={{
+              position: 'fixed',
+              inset: 0,
+              height: '100vh',
               overflow: 'hidden',
-              // 5. Динамічно встановлюємо 'top' рівним висоті хедера
-              top: `${headerHeight}px`, 
               willChange: 'transform, opacity',
               backfaceVisibility: 'hidden',
               display: isDesktop ? 'none' : 'block',
-              // zIndex: 991 (прийде з .mobile-menu в index.css)
+              zIndex: 991,
             }}
             aria-hidden={!open}
           >
-            {/* Обгортка для скролу */}
-            <div 
-              style={{ 
-                // 6. Висота тепер 'auto', але не більше ніж висота екрану мінус хедер
-                maxHeight: `calc(100vh - ${headerHeight}px)`, 
+            <div
+              style={{
+                height: '100%',
+                maxHeight: '100%',
                 overflowY: 'auto',
-                // paddingTop: '80px', // <--- БІЛЬШЕ НЕ ПОТРІБЕН
+                paddingTop: headerHeight,
               }}
               className="no-scrollbar"
             >
               <div className="container" style={{ padding: '12px 0' }}>
-                
-                <form onSubmit={onSearch} style={{ marginBottom: 12 }}>
-                  <input className="input" placeholder="Пошук..." value={q} onChange={(e) => setQ(e.target.value)} />
-                </form>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
+                  <form onSubmit={onSearch} style={{ flex: 1 }}>
+                    <input
+                      className="input"
+                      placeholder="Пошук..."
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </form>
+
+                  <motion.button
+                    className="btn-outline pixel-menu-button"
+                    style={{
+                      flexShrink: 0,
+                      zIndex: 993,
+                      color: 'var(--header-icon-stroke)',
+                      padding: '6px 10px',
+                    }}
+                    onClick={() => setOpen(false)}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.95 }}
+                    aria-label="Закрити меню"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path
+                        d="M5 5 L19 19 M19 5 L5 19"
+                        stroke="var(--header-icon-stroke, currentColor)"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </svg>
+                  </motion.button>
+                </div>
 
                 <motion.ul
-                  style={{ listStyle: 'none', display: 'grid', gap: 10, margin: 0, padding: 0 }}
+                  style={{
+                    listStyle: 'none',
+                    display: 'grid',
+                    gap: 10,
+                    margin: 0,
+                    padding: 0,
+                  }}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
@@ -395,7 +517,11 @@ export default function Header() {
                       <Link to="/account" className="btn-account" style={{ fontSize: 12, padding: 8 }}>
                         👤 Профіль
                       </Link>
-                      <button onClick={handleLogout} className="btn-logout" style={{ fontSize: 12, padding: 8 }}>
+                      <button
+                        onClick={handleLogout}
+                        className="btn-logout"
+                        style={{ fontSize: 12, padding: 8 }}
+                      >
                         Вийти
                       </button>
                     </>
@@ -419,7 +545,6 @@ export default function Header() {
   );
 }
 
-// ... (DesktopMenuItem, MobileMenuItem, ThemeToggle, subItemVariants, Path - БЕЗ ЗМІН) ...
 function DesktopMenuItem({ item, addSep = false }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -429,39 +554,45 @@ function DesktopMenuItem({ item, addSep = false }) {
       onMouseLeave={() => setIsOpen(false)}
       style={{
         position: 'relative',
-        paddingLeft: addSep ? 12 : 0,
-        marginLeft: addSep ? 10 : 0,
+        paddingLeft: addSep ? 8 : 0,
+        marginLeft: addSep ? 6 : 0,
         borderLeft: addSep ? '1px solid var(--border-input)' : 'none',
+        flexShrink: 0,
       }}
     >
       <span
-        className="menu-label" // Стилі для .menu-label будуть в index.css
-        style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: item.compact ? 'nowrap' : undefined, fontSize: item.compact ? 13 : undefined }}
+        className="menu-label"
+        style={{
+          cursor: 'pointer',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+          fontSize: item.compact ? 11 : 12,
+        }}
       >
         {item.label}
       </span>
       {isOpen && (
         <ul
-          className="submenu" // Стилі для .submenu будуть в index.css
+          className="submenu"
           style={{
             position: 'absolute',
             top: '100%',
             left: 0,
             listStyle: 'none',
             margin: 0,
-            padding: '10px 12px',
-            background: 'var(--surface-primary)', // Використовує CSS змінну
-            borderRadius: 12,
-            boxShadow: 'var(--shadow-card-hover)', // Використовує CSS змінну
+            padding: '8px 10px',
+            background: 'var(--surface-primary)',
+            borderRadius: 10,
+            boxShadow: 'var(--shadow-card-hover)',
             display: 'grid',
-            gap: 6,
-            minWidth: 220,
+            gap: 4,
+            minWidth: 200,
             zIndex: 50,
           }}
         >
           {item.subItems.map((sub, subIndex) => (
             <li key={subIndex}>
-              <Link to={sub.link} className="submenu-link"> {/* Додамо клас для CSS */}
+              <Link to={sub.link} className="submenu-link">
                 {sub.label}
               </Link>
             </li>
@@ -477,7 +608,7 @@ function MobileMenuItem({ item }) {
   return (
     <li>
       <motion.div
-        className="menu-label-mobile" // Стилі для .menu-label-mobile будуть в index.css
+        className="menu-label-mobile"
         onClick={() => setSubOpen(!subOpen)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
@@ -488,7 +619,13 @@ function MobileMenuItem({ item }) {
       <AnimatePresence>
         {subOpen && (
           <motion.ul
-            style={{ listStyle: 'none', paddingLeft: 20, gap: 8, display: 'grid', margin: 0 }}
+            style={{
+              listStyle: 'none',
+              paddingLeft: 20,
+              gap: 8,
+              display: 'grid',
+              margin: 0,
+            }}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -524,7 +661,7 @@ function ThemeToggle({ theme, onToggle, variant = 'desktop' }) {
   
   const dims = variant === 'mobile'
     ? { trackW: 62, trackH: 30, pad: 3, knob: 24, decoPad: 9 }
-    : { trackW: 74, trackH: 34, pad: 4, knob: 26, decoPad: 10 };
+    : { trackW: 64, trackH: 30, pad: 3, knob: 22, decoPad: 8 }; // компактніший на ПК
 
   const colors = {
     trackBg: 'var(--surface-input)',
@@ -546,10 +683,11 @@ function ThemeToggle({ theme, onToggle, variant = 'desktop' }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: variant === 'mobile' ? 8 : 10,
-        marginLeft: variant === 'mobile' ? 6 : 10,
+        gap: variant === 'mobile' ? 8 : 6,
+        marginLeft: variant === 'mobile' ? 6 : 4,
         cursor: 'pointer',
         userSelect: 'none',
+        flexShrink: 0,
       }}
       title={isDark ? 'Темна тема' : 'Світла тема'}
     >
@@ -568,19 +706,33 @@ function ThemeToggle({ theme, onToggle, variant = 'desktop' }) {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
-        {/* Декор: сонце ліворуч, місяць праворуч */}
-        <div style={{ position: 'absolute', left: dims.decoPad, top: '50%', transform: 'translateY(-50%)', opacity: isDark ? 0.5 : 0.9 }}>
-          <svg width="12" height="12" viewBox="0 0 24 24">
+        <div
+          style={{
+            position: 'absolute',
+            left: dims.decoPad,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            opacity: isDark ? 0.5 : 0.9,
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="5" fill={colors.knobIcon} />
           </svg>
         </div>
-        <div style={{ position: 'absolute', right: dims.decoPad, top: '50%', transform: 'translateY(-50%)', opacity: isDark ? 0.9 : 0.55 }}>
-          <svg width="12" height="12" viewBox="0 0 24 24">
+        <div
+          style={{
+            position: 'absolute',
+            right: dims.decoPad,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            opacity: isDark ? 0.9 : 0.55,
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24">
             <path fill={colors.knobIcon} d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
           </svg>
         </div>
 
-        {/* Рухомий повзунок */}
         <motion.div
           style={{
             position: 'absolute',
@@ -600,21 +752,17 @@ function ThemeToggle({ theme, onToggle, variant = 'desktop' }) {
           transition={{ type: 'spring', stiffness: 340, damping: 24 }}
         >
           {isDark ? (
-            <svg width="14" height="14" viewBox="0 0 24 24">
+            <svg width="13" height="13" viewBox="0 0 24 24">
               <path fill="currentColor" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24">
+            <svg width="13" height="13" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="5" fill="currentColor" />
-              <g stroke="currentColor" strokeWidth="1.6">
+              <g stroke="currentColor" strokeWidth="1.4">
                 <line x1="12" y1="1" x2="12" y2="5" />
                 <line x1="12" y1="19" x2="12" y2="23" />
                 <line x1="1" y1="12" x2="5" y2="12" />
                 <line x1="19" y1="12" x2="23" y2="12" />
-                <line x1="4.2" y1="4.2" x2="6.9" y2="6.9" />
-                <line x1="17.1" y1="17.1" x2="19.8" y2="19.8" />
-                <line x1="17.1" y1="6.9" x2="19.8" y2="4.2" />
-                <line x1="4.2" y1="19.8" x2="6.9" y2="17.1" />
               </g>
             </svg>
           )}
@@ -626,9 +774,14 @@ function ThemeToggle({ theme, onToggle, variant = 'desktop' }) {
 
 const subItemVariants = {
   hidden: { opacity: 0, y: 8 },
-  visible: (i) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.25, ease: 'easeOut' } }),
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.05, duration: 0.25, ease: 'easeOut' },
+  }),
   exit: { opacity: 0, y: 5, transition: { duration: 0.15, ease: 'easeIn' } },
 };
+
 const Path = (props) => (
   <motion.path
     fill="transparent"

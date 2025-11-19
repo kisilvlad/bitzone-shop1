@@ -20,12 +20,12 @@ const Tabs = styled.div`
   flex-wrap: wrap; gap: 8px; justify-content: center;
   .tab-btn {
     padding: 8px 12px; border-radius: 12px; font-weight: 800; letter-spacing: .2px;
-    border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
+    border: 1px solid var(--border-input);
     background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
     [data-theme="light"] & {
       background: var(--surface-input);
     }
-    color: var(--text-primary); /* <-- ЗМІНЕНО */
+    color: var(--text-primary);
     text-decoration: none;
     transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease;
   }
@@ -53,10 +53,10 @@ const Sidebar = styled.aside`
   position: sticky;
   top: 84px;
   align-self: start;
-  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-primary);
   border-radius: 16px;
-  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
-  box-shadow: var(--shadow-card); /* <-- ЗМІНЕНО */
+  background: var(--surface-gradient);
+  box-shadow: var(--shadow-card);
   padding: 14px;
 `;
 const TopControls = styled.div`
@@ -68,9 +68,9 @@ const TopControls = styled.div`
 const FilterBtn = styled.button`
   padding: 10px 14px; border-radius: 999px;
   font-weight: 900;
-  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-  background: var(--surface-input); /* <-- ЗМІНЕНО */
-  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-input);
+  background: var(--surface-input);
+  color: var(--text-primary);
   box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,.08);
   [data-theme="light"] & {
      box-shadow: var(--shadow-card), inset 0 1px 0 rgba(0,0,0,.04);
@@ -88,11 +88,11 @@ const SortRow = styled.div`
 const SortBtn = styled.button`
   padding: 7px 10px; border-radius: 10px; font-weight: 800;
   letter-spacing: .2px;
-  border: 1px solid ${({active})=>active?'var(--accent-turquoise)':'var(--border-input)'}; /* <-- ЗМІНЕНО */
+  border: 1px solid ${({active})=>active?'var(--accent-turquoise)':'var(--border-input)'};
   background: ${({active})=>active
     ? 'linear-gradient(180deg, rgba(0,245,255,.12), rgba(0,245,255,.06))' 
-    : 'var(--surface-input)'}; /* <-- ЗМІНЕНО */
-  color: ${({active})=>active?'var(--accent-turquoise)':'var(--text-primary)'}; /* <-- ЗМІНЕНО */
+    : 'var(--surface-input)'};
+  color: ${({active})=>active?'var(--accent-turquoise)':'var(--text-primary)'};
   transition: transform .12s ease, box-shadow .15s ease;
   &:hover { transform: translateY(-1px); }
 `;
@@ -114,7 +114,7 @@ const GButton = styled.button`
       case 'primary':
         return `
           color: var(--text-primary);
-          border: 1px solid var(--accent-turquoise); /* <-- ЗМІНЕНО */
+          border: 1px solid var(--accent-turquoise);
           background: linear-gradient(180deg, rgba(0,245,255,.12), rgba(255,215,0,.10));
           [data-theme="light"] & {
              background: linear-gradient(180deg, rgba(0,245,255,.12), rgba(255,215,0,.10));
@@ -124,15 +124,15 @@ const GButton = styled.button`
       case 'danger':
         return `
           color: var(--text-primary);
-          border: 1px solid var(--accent-pink); /* <-- ЗМІНЕНО */
+          border: 1px solid var(--accent-pink);
           background: linear-gradient(180deg, rgba(255,0,127,.12), rgba(255,0,127,.08));
           box-shadow: 0 12px 30px var(--shadow-btn-pink), inset 0 1px 0 rgba(255,255,255,.06);
         `;
       default: // 'outline'
         return `
           color: var(--text-primary);
-          border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-          background: var(--surface-input); /* <-- ЗМІНЕНО */
+          border: 1px solid var(--border-input);
+          background: var(--surface-input);
           box-shadow: 0 10px 24px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.06);
           [data-theme="light"] & {
              box-shadow: 0 10px 24px rgba(0,0,0,.05), inset 0 1px 0 rgba(0,0,0,.02);
@@ -154,9 +154,9 @@ const SheetPanel = styled(motion.aside)`
   position: fixed; top: 0; left: 0; right: 0;
   z-index: 71;
   border-bottom-left-radius: 18px; border-bottom-right-radius: 18px;
-  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
-  border-bottom: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
-  box-shadow: var(--shadow-card-hover); /* <-- ЗМІНЕНО */
+  background: var(--surface-gradient);
+  border-bottom: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-card-hover);
   max-height: 86vh;
   display: flex; flex-direction: column; overflow: hidden;
   @media (min-width: 993px) { display: none; }
@@ -164,7 +164,7 @@ const SheetPanel = styled(motion.aside)`
 const SheetHeader = styled.div`
   display: flex;
   align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  padding: 14px 16px; border-bottom: 1px solid var(--border-primary);
 `;
 const SheetBody = styled.div`
   padding: 14px 16px;
@@ -173,7 +173,7 @@ const SheetBody = styled.div`
 `;
 const SheetFooter = styled.div`
   padding: 12px 16px;
-  border-top: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  border-top: 1px solid var(--border-primary);
   display: flex;
   gap: 10px; justify-content: space-between; align-items: center;
 `;
@@ -184,45 +184,45 @@ const GroupTitle = styled.div`
   margin-bottom: 8px;
 `;
 const Box = styled.div`
-  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-primary);
   border-radius: 12px; padding: 10px;
-  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  background: var(--surface-gradient);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 `;
 const SearchInput = styled.input`
   width: 100%; padding: 10px 12px; border-radius: 10px;
-  background: var(--surface-input); /* <-- ЗМІНЕНО */
-  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  background: var(--surface-input);
+  border: 1px solid var(--border-input);
+  color: var(--text-primary);
   outline: none;
 `;
 const Row = styled.div` display:flex; gap:10px; align-items:center; `;
 const NumberInput = styled.input`
   width: 100%; padding: 8px 10px; border-radius: 10px;
-  background: var(--surface-input); /* <-- ЗМІНЕНО */
-  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  background: var(--surface-input);
+  border: 1px solid var(--border-input);
+  color: var(--text-primary);
   outline: none;
 `;
 const Check = styled.label`
   display: flex; align-items: center; gap: 8px;
   font-size: 13px; cursor: pointer;
   user-select: none;
-  color: var(--text-primary); /* <-- ЗМІНЕНО */
+  color: var(--text-primary);
   padding: 7px 8px; border-radius: 10px;
   transition: background .15s ease, border-color .15s ease, transform .08s ease;
   border: 1px solid transparent;
-  &:hover { background: var(--surface-input); } /* <-- ЗМІНЕНО */
+  &:hover { background: var(--surface-input); }
   input { appearance: none; width: 16px; height: 16px; border-radius: 4px;
-    border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-    background: var(--surface-input); /* <-- ЗМІНЕНО */
+    border: 1px solid var(--border-input);
+    background: var(--surface-input);
     display: grid; place-items: center;
   }
   input:checked {
     border-color: var(--accent-yellow);
-    background: linear-gradient(180deg, var(--accent-yellow), var(--accent-yellow-dark)); /* <-- ЗМІНЕНО */
-    box-shadow: 0 4px 12px var(--shadow-neon); /* <-- ЗМІНЕНО */
+    background: linear-gradient(180deg, var(--accent-yellow), var(--accent-yellow-dark));
+    box-shadow: 0 4px 12px var(--shadow-neon);
   }
 `;
 const Chipbar = styled.div`
@@ -230,10 +230,10 @@ const Chipbar = styled.div`
   gap: 8px; margin: 6px 0 18px;
 `;
 const Chip = styled.button`
-  border: 1px solid var(--border-input); /* <-- ЗМІНЕНО */
-  background: var(--surface-input); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-input);
+  background: var(--surface-input);
   border-radius: 999px; padding: 6px 10px; font-size: 11px;
-  color: var(--text-secondary); /* <-- ЗМІНЕНО */
+  color: var(--text-secondary);
   display: inline-flex; gap: 8px; align-items: center; cursor: pointer;
 `;
 const ProductsGrid = styled.div`
@@ -256,8 +256,8 @@ const Pager = styled.div`
 const PagerLabel = styled.span`
   font-size: 12px; opacity: .85;
   padding: 8px 10px; border-radius: 10px;
-  border: 1px solid var(--border-primary); /* <-- ЗМІНЕНО */
-  background: var(--surface-gradient); /* <-- ЗМІНЕНО */
+  border: 1px solid var(--border-primary);
+  background: var(--surface-gradient);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
 `;
 const PagerBtn = styled.button`
@@ -265,26 +265,26 @@ const PagerBtn = styled.button`
   padding: 10px 14px;
   border-radius: 12px;
   font-weight: 800; letter-spacing: .2px;
-  color: ${({disabled})=>disabled?'var(--text-secondary)':'var(--text-primary)'}; /* <-- ЗМІНЕНО */
-  border: 1px solid ${({disabled})=>disabled?'var(--border-input)':'var(--accent-turquoise)'}; /* <-- ЗМІНЕНО */
+  color: ${({disabled})=>disabled?'var(--text-secondary)':'var(--text-primary)'};
+  border: 1px solid ${({disabled})=>disabled?'var(--border-input)':'var(--accent-turquoise)'};
   background: ${({disabled})=>disabled
     ? 'var(--surface-input)'
-    : 'linear-gradient(180deg, rgba(0,245,255,.10), rgba(255,215,0,.08))'}; /* <-- ЗМІНЕНО */
-  box-shadow: ${({disabled})=>disabled?'none':'0 12px 30px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(255,255,255,.08)'}; /* <-- ЗМІНЕНО */
+    : 'linear-gradient(180deg, rgba(0,245,255,.10), rgba(255,215,0,.08))'};
+  box-shadow: ${({disabled})=>disabled?'none':'0 12px 30px var(--shadow-btn-turquoise), inset 0 1px 0 rgba(255,255,255,.08)'};
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease, opacity .2s ease;
   cursor: ${({disabled})=>disabled?'not-allowed':'pointer'};
   &:hover { transform: ${({disabled})=>disabled?'none':'translateY(-1px)'}; }
   &:active { transform: ${({disabled})=>disabled?'none':'translateY(0) scale(.98)'}; }
-`;
 /* ======================== Helpers (без змін) ======================== */
+`;
 
 function useQuery() {
   const loc = useLocation();
   return useMemo(() => new URLSearchParams(loc.search), [loc.search]);
 }
 
-/* ======================== Page (без змін в логіці) ======================== */
+/* ======================== Page ======================== */
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -326,7 +326,7 @@ export default function Products() {
     }
   });
 
-  // Синхронізація UI state при зміні URL (напр. клік по табу категорії)
+  // Синхронізація UI state при зміні URL
   useEffect(() => {
     setUi(s => ({
       ...s,
@@ -414,7 +414,6 @@ export default function Products() {
       platforms: { sony:false, xbox:false, nintendo:false, steamdeck:false }
     };
     setUi(blank);
-    // Скидаємо всі параметри в URL
     navigate(loc.pathname, { replace: true });
   };
   
@@ -461,8 +460,8 @@ export default function Products() {
     updateUrl({ [key]: '' });
   };
   
-  /* ======================== Render (ОНОВЛЕНО) ======================== */
-  if (error) return <p className="p center" style={{ color: 'var(--accent-pink)' }}>{error}</p>; // <-- ЗМІНЕНО
+  /* ======================== Render ======================== */
+  if (error) return <p className="p center" style={{ color: 'var(--accent-pink)' }}>{error}</p>;
   
   return (
     <Page className="container">
@@ -486,104 +485,256 @@ export default function Products() {
 
       <Layout>
         <Sidebar>
-            <Group>
-                <GroupTitle>Пошук</GroupTitle>
-                <Box>
-                    <SearchInput
-                        placeholder="Назва товару..."
-                        value={ui.search}
-                        onChange={e => setUi(s => ({ ...s, search: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
+          <Group>
+            <GroupTitle>Пошук</GroupTitle>
+            <Box>
+              <SearchInput
+                placeholder="Назва товару..."
+                value={ui.search}
+                onChange={e => setUi(s => ({ ...s, search: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
+              />
+            </Box>
+          </Group>
+
+          <Group>
+            <GroupTitle>Ціна, грн</GroupTitle>
+            <Box>
+              <Row>
+                <NumberInput
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Від"
+                  value={ui.minPrice}
+                  onChange={e => setUi(s => ({ ...s, minPrice: e.target.value }))}
+                />
+                <NumberInput
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="До"
+                  value={ui.maxPrice}
+                  onChange={e => setUi(s => ({ ...s, maxPrice: e.target.value }))}
+                />
+              </Row>
+            </Box>
+          </Group>
+
+          {/* 🔥 НОВЕ: Категорія (десктоп) */}
+          <Group>
+            <GroupTitle>Категорія</GroupTitle>
+            <Box>
+              <div style={{ display: 'grid', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                <Check onClick={() => setUi(s => ({ ...s, category: '' }))}>
+                  <input
+                    type="radio"
+                    name="categoryFilterDesktop"
+                    checked={!ui.category}
+                    onChange={() => setUi(s => ({ ...s, category: '' }))}
+                  />
+                  Усі категорії
+                </Check>
+
+                {categories.map(cat => (
+                  <Check
+                    key={cat.id}
+                    onClick={() => setUi(s => ({ ...s, category: String(cat.id) }))}
+                  >
+                    <input
+                      type="radio"
+                      name="categoryFilterDesktop"
+                      checked={String(ui.category) === String(cat.id)}
+                      onChange={() => setUi(s => ({ ...s, category: String(cat.id) }))}
                     />
-                </Box>
-            </Group>
-            <Group>
-                <GroupTitle>Ціна, грн</GroupTitle>
-                <Box>
-                    <Row>
-                        <NumberInput type="number" inputMode="numeric" placeholder="Від" value={ui.minPrice} onChange={e => setUi(s => ({ ...s, minPrice: e.target.value }))} />
-                        <NumberInput type="number" inputMode="numeric" placeholder="До" value={ui.maxPrice} onChange={e => setUi(s => ({ ...s, maxPrice: e.target.value }))} />
-                    </Row>
-                </Box>
-            </Group>
-            <Group>
-                <GroupTitle>Тип</GroupTitle>
-                <Box>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                        <Check><input type="checkbox" checked={ui.types.consoles} onChange={() => setUi(s => ({ ...s, types: { ...s.types, consoles: !s.types.consoles } }))} />Консолі</Check>
-                        <Check><input type="checkbox" checked={ui.types.games} onChange={() => setUi(s => ({ ...s, types: { ...s.types, games: !s.types.games } }))} />Ігри</Check>
-                        <Check><input type="checkbox" checked={ui.types.accs} onChange={() => setUi(s => ({ ...s, types: { ...s.types, accs: !s.types.accs } }))} />Аксесуари</Check>
-                    </div>
-                </Box>
-            </Group>
-            <Group>
-                <GroupTitle>Платформи</GroupTitle>
-                <Box>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                        <Check><input type="checkbox" checked={ui.platforms.sony} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, sony: !s.platforms.sony } }))} />Sony / PlayStation</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.xbox} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, xbox: !s.platforms.xbox } }))} />Xbox</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.nintendo} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, nintendo: !s.platforms.nintendo } }))} />Nintendo</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.steamdeck} onChange={() => setUi(s => ({ ...s, platforms: { ...s.platforms, steamdeck: !s.platforms.steamdeck } }))} />Steam Deck</Check>
-                    </div>
-                </Box>
-            </Group>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: 'column' }}>
-                <GButton variant="primary" onClick={() => applyFilters()}>Застосувати</GButton>
-                <GButton variant="danger" onClick={resetAll}>Очистити всі</GButton>
-            </div>
+                    {cat.name}
+                  </Check>
+                ))}
+              </div>
+            </Box>
+          </Group>
+
+          <Group>
+            <GroupTitle>Тип</GroupTitle>
+            <Box>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.types.consoles}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        types: { ...s.types, consoles: !s.types.consoles },
+                      }))
+                    }
+                  />
+                  Консолі
+                </Check>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.types.games}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        types: { ...s.types, games: !s.types.games },
+                      }))
+                    }
+                  />
+                  Ігри
+                </Check>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.types.accs}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        types: { ...s.types, accs: !s.types.accs },
+                      }))
+                    }
+                  />
+                  Аксесуари
+                </Check>
+              </div>
+            </Box>
+          </Group>
+
+          <Group>
+            <GroupTitle>Платформи</GroupTitle>
+            <Box>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.platforms.sony}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        platforms: { ...s.platforms, sony: !s.platforms.sony },
+                      }))
+                    }
+                  />
+                  Sony / PlayStation
+                </Check>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.platforms.xbox}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        platforms: { ...s.platforms, xbox: !s.platforms.xbox },
+                      }))
+                    }
+                  />
+                  Xbox
+                </Check>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.platforms.nintendo}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        platforms: { ...s.platforms, nintendo: !s.platforms.nintendo },
+                      }))
+                    }
+                  />
+                  Nintendo
+                </Check>
+                <Check>
+                  <input
+                    type="checkbox"
+                    checked={ui.platforms.steamdeck}
+                    onChange={() =>
+                      setUi(s => ({
+                        ...s,
+                        platforms: { ...s.platforms, steamdeck: !s.platforms.steamdeck },
+                      }))
+                    }
+                  />
+                  Steam Deck
+                </Check>
+              </div>
+            </Box>
+          </Group>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexDirection: 'column' }}>
+            <GButton variant="primary" onClick={() => applyFilters()}>Застосувати</GButton>
+            <GButton variant="danger" onClick={resetAll}>Очистити всі</GButton>
+          </div>
         </Sidebar>
 
         <div>
-            {activeChips.length > 0 && (
-                <Chipbar>
-                    {activeChips.map((c, i) => (
-                        <Chip key={i} onClick={() => clearFilter(c.key)} title="Скинути">
-                            <span>{c.label}</span><span aria-hidden>×</span>
-                        </Chip>
-                    ))}
-                    <Chip onClick={resetAll} title="Очистити всі">Очистити всі ×</Chip>
-                </Chipbar>
-            )}
+          {activeChips.length > 0 && (
+            <Chipbar>
+              {activeChips.map((c, i) => (
+                <Chip key={i} onClick={() => clearFilter(c.key)} title="Скинути">
+                  <span>{c.label}</span><span aria-hidden>×</span>
+                </Chip>
+              ))}
+              <Chip onClick={resetAll} title="Очистити всі">Очистити всі ×</Chip>
+            </Chipbar>
+          )}
 
-            <TopControls>
-                <FilterBtn onClick={() => setSheetOpen(true)}>⚙️ Фільтри та сортування</FilterBtn>
-                <SortRow>
-                    <SortBtn active={sortOption === 'newest'} onClick={() => setSort('newest')}>Нові</SortBtn>
-                    <SortBtn active={sortOption === 'price-asc'} onClick={() => setSort('price-asc')}>Дешевші</SortBtn>
-                    <SortBtn active={sortOption === 'price-desc'} onClick={() => setSort('price-desc')}>Дорожчі</SortBtn>
-                </SortRow>
-            </TopControls>
+          <TopControls>
+            <FilterBtn onClick={() => setSheetOpen(true)}>⚙️ Фільтри та сортування</FilterBtn>
+            <SortRow>
+              <SortBtn active={sortOption === 'newest'} onClick={() => setSort('newest')}>Нові</SortBtn>
+              <SortBtn active={sortOption === 'price-asc'} onClick={() => setSort('price-asc')}>Дешевші</SortBtn>
+              <SortBtn active={sortOption === 'price-desc'} onClick={() => setSort('price-desc')}>Дорожчі</SortBtn>
+            </SortRow>
+          </TopControls>
 
-            {loading ? (
-                <p className="p center" style={{ marginTop: 20, color: 'var(--text-secondary)' }}>Завантаження товарів...</p> /* <-- ЗМІНЕНО */
-            ) : (
-                <>
-                    <ProductsGrid>
-                        <AnimatePresence>
-                            {products.map((product) => (
-                                <ProductItem key={product._id} variants={fmItem} initial="hidden" animate="visible" exit="hidden" layout>
-                                    <ProductCard product={product} />
-                                </ProductItem>
-                            ))}
-                        </AnimatePresence>
-                    </ProductsGrid>
-                    {products.length === 0 && !loading && (
-                        <p className="p center" style={{ color: 'var(--text-secondary)', marginTop: 20 }}> {/* <-- ЗМІНЕНО */}
-                            Товарів не знайдено. Спробуйте змінити фільтри.
-                        </p>
-                    )}
-                </>
-            )}
+          {loading ? (
+            <p className="p center" style={{ marginTop: 20, color: 'var(--text-secondary)' }}>
+              Завантаження товарів...
+            </p>
+          ) : (
+            <>
+              <ProductsGrid>
+                <AnimatePresence>
+                  {products.map((product) => (
+                    <ProductItem
+                      key={product._id}
+                      variants={fmItem}
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      layout
+                    >
+                      <ProductCard product={product} />
+                    </ProductItem>
+                  ))}
+                </AnimatePresence>
+              </ProductsGrid>
+              {products.length === 0 && !loading && (
+                <p
+                  className="p center"
+                  style={{ color: 'var(--text-secondary)', marginTop: 20 }}
+                >
+                  Товарів не знайдено. Спробуйте змінити фільтри.
+                </p>
+              )}
+            </>
+          )}
 
-            {products.length > 0 && totalPages > 1 && (
-                <Pager>
-                    <PagerBtn disabled={page === 1} onClick={() => handlePageChange(page - 1)}>← Попередня</PagerBtn>
-                    <PagerLabel>Сторінка {page} з {totalPages}</PagerLabel>
-                    <PagerBtn disabled={page === totalPages} onClick={() => handlePageChange(page + 1)}>Наступна →</PagerBtn>
-                </Pager>
-            )}
+          {products.length > 0 && totalPages > 1 && (
+            <Pager>
+              <PagerBtn disabled={page === 1} onClick={() => handlePageChange(page - 1)}>
+                ← Попередня
+              </PagerBtn>
+              <PagerLabel>Сторінка {page} з {totalPages}</PagerLabel>
+              <PagerBtn
+                disabled={page === totalPages}
+                onClick={() => handlePageChange(page + 1)}
+              >
+                Наступна →
+              </PagerBtn>
+            </Pager>
+          )}
         </div>
-    </Layout>
+      </Layout>
       
       {/* Mobile Top Sheet (Фільтри зверху) */}
       <AnimatePresence>
@@ -599,51 +750,178 @@ export default function Products() {
               onClick={(e)=>e.stopPropagation()}
             >
               <SheetHeader>
-                <div className="mono" style={{ color:'var(--accent-turquoise)' }}>Фільтри</div> {/* <-- ЗМІНЕНО */}
+                <div className="mono" style={{ color:'var(--accent-turquoise)' }}>Фільтри</div>
                 <GButton variant="outline" onClick={() => setSheetOpen(false)}>Закрити ×</GButton>
               </SheetHeader>
               <SheetBody>
-                {/* Вміст мобільних фільтрів аналогічний десктопним */}
                 <Group>
                   <GroupTitle>Пошук</GroupTitle>
                   <Box>
-                    <SearchInput placeholder="Назва товару..." value={ui.search} onChange={e=>setUi(s=>({ ...s, search: e.target.value }))} />
+                    <SearchInput
+                      placeholder="Назва товару..."
+                      value={ui.search}
+                      onChange={e=>setUi(s=>({ ...s, search: e.target.value }))}
+                    />
                   </Box>
                 </Group>
-                 <Group>
-                    <GroupTitle>Ціна, грн</GroupTitle>
-                    <Box>
-                        <Row>
-                            <NumberInput type="number" inputMode="numeric" placeholder="Від" value={ui.minPrice} onChange={e=>setUi(s=>({ ...s, minPrice: e.target.value }))} />
-                            <NumberInput type="number" inputMode="numeric" placeholder="До" value={ui.maxPrice} onChange={e=>setUi(s=>({ ...s, maxPrice: e.target.value }))} />
-                        </Row>
-                    </Box>
-                </Group>
+
                 <Group>
-                    <GroupTitle>Тип</GroupTitle>
-                    <Box>
-                        <div style={{ display:'grid', gap: 6 }}>
-                            <Check><input type="checkbox" checked={ui.types.consoles} onChange={()=>setUi(s=>({ ...s, types:{...s.types, consoles:!s.types.consoles} }))} />Консолі</Check>
-                            <Check><input type="checkbox" checked={ui.types.games}    onChange={()=>setUi(s=>({ ...s, types:{...s.types, games:!s.types.games} }))} />Ігри</Check>
-                            <Check><input type="checkbox" checked={ui.types.accs}     onChange={()=>setUi(s=>({ ...s, types:{...s.types, accs:!s.types.accs} }))} />Аксесуари</Check>
-                        </div>
-                    </Box>
+                  <GroupTitle>Ціна, грн</GroupTitle>
+                  <Box>
+                    <Row>
+                      <NumberInput
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="Від"
+                        value={ui.minPrice}
+                        onChange={e=>setUi(s=>({ ...s, minPrice: e.target.value }))}
+                      />
+                      <NumberInput
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="До"
+                        value={ui.maxPrice}
+                        onChange={e=>setUi(s=>({ ...s, maxPrice: e.target.value }))}
+                      />
+                    </Row>
+                  </Box>
                 </Group>
+
+                {/* 🔥 НОВЕ: Категорія (мобільні фільтри) */}
+                <Group>
+                  <GroupTitle>Категорія</GroupTitle>
+                  <Box>
+                    <div style={{ display:'grid', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                      <Check onClick={() => setUi(s => ({ ...s, category: '' }))}>
+                        <input
+                          type="radio"
+                          name="categoryFilterMobile"
+                          checked={!ui.category}
+                          onChange={() => setUi(s => ({ ...s, category: '' }))}
+                        />
+                        Усі категорії
+                      </Check>
+
+                      {categories.map(cat => (
+                        <Check
+                          key={cat.id}
+                          onClick={() => setUi(s => ({ ...s, category: String(cat.id) }))}
+                        >
+                          <input
+                            type="radio"
+                            name="categoryFilterMobile"
+                            checked={String(ui.category) === String(cat.id)}
+                            onChange={() => setUi(s => ({ ...s, category: String(cat.id) }))}
+                          />
+                          {cat.name}
+                        </Check>
+                      ))}
+                    </div>
+                  </Box>
+                </Group>
+
+                <Group>
+                  <GroupTitle>Тип</GroupTitle>
+                  <Box>
+                    <div style={{ display:'grid', gap: 6 }}>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.types.consoles}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            types:{...s.types, consoles:!s.types.consoles}
+                          }))}
+                        />
+                        Консолі
+                      </Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.types.games}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            types:{...s.types, games:!s.types.games}
+                          }))}
+                        />
+                        Ігри
+                      </Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.types.accs}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            types:{...s.types, accs:!s.types.accs}
+                          }))}
+                        />
+                        Аксесуари
+                      </Check>
+                    </div>
+                  </Box>
+                </Group>
+
                 <Group>
                   <GroupTitle>Платформи</GroupTitle>
                   <Box>
                     <div style={{ display:'grid', gap: 6 }}>
-                        <Check><input type="checkbox" checked={ui.platforms.sony} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, sony:!s.platforms.sony} }))} />Sony / PlayStation</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.xbox} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, xbox:!s.platforms.xbox} }))} />Xbox</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.nintendo} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, nintendo:!s.platforms.nintendo} }))} />Nintendo</Check>
-                        <Check><input type="checkbox" checked={ui.platforms.steamdeck} onChange={()=>setUi(s=>({ ...s, platforms:{...s.platforms, steamdeck:!s.platforms.steamdeck} }))} />Steam Deck</Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.platforms.sony}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            platforms:{...s.platforms, sony:!s.platforms.sony}
+                          }))}
+                        />
+                        Sony / PlayStation
+                      </Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.platforms.xbox}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            platforms:{...s.platforms, xbox:!s.platforms.xbox}
+                          }))}
+                        />
+                        Xbox
+                      </Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.platforms.nintendo}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            platforms:{...s.platforms, nintendo:!s.platforms.nintendo}
+                          }))}
+                        />
+                        Nintendo
+                      </Check>
+                      <Check>
+                        <input
+                          type="checkbox"
+                          checked={ui.platforms.steamdeck}
+                          onChange={()=>setUi(s=>({
+                            ...s,
+                            platforms:{...s.platforms, steamdeck:!s.platforms.steamdeck}
+                          }))}
+                        />
+                        Steam Deck
+                      </Check>
                     </div>
                   </Box>
                 </Group>
               </SheetBody>
               <SheetFooter>
                 <GButton variant="danger" onClick={resetAll}>Очистити</GButton>
-                <GButton variant="primary" onClick={()=>{ applyFilters(); setSheetOpen(false); }} full>Застосувати</GButton>
+                <GButton
+                  variant="primary"
+                  onClick={()=>{ applyFilters(); setSheetOpen(false); }}
+                  full
+                >
+                  Застосувати
+                </GButton>
               </SheetFooter>
             </SheetPanel>
           </>
