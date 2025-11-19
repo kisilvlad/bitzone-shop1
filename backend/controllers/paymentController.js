@@ -93,39 +93,57 @@ const createMonobankInvoice = asyncHandler(async (req, res) => {
 
   const orderIdStr = String(orderId);
 
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'https://bitzone.com.ua';
-  const BACKEND_PUBLIC_URL =
-    process.env.BACKEND_PUBLIC_URL || process.env.API_PUBLIC_URL || '';
+  // URL фронта:
+  // - спочатку пробуємо FRONTEND_URL,
+  // - якщо його немає — BASE_CLIENT_URL (який ти вже використовуєш),
+  // - далі дефолт — https://bitzone.com.ua
+  const FRONTEND_URL =
+    process.env.FRONTEND_URL ||
+    process.env.BASE_CLIENT_URL ||
+    'https://bitzone.com.ua';
 
   const baseRedirectUrl = `${FRONTEND_URL.replace(/\/$/, '')}/payment-result`;
-
-  // Користувача все одно буде переадресовано на redirectUrl,
-  // а successUrl / failUrl просто зручні, якщо ти захочеш їх обробляти окремо.
   const redirectUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
     orderIdStr
   )}`;
-  const successUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
-    orderIdStr
-  )}&status=success`;
-  const failUrl = `${baseRedirectUrl}?orderId=${encodeURIComponent(
-    orderIdStr
-  )}&status=fail`;
 
-  const webHookUrl = BACKEND_PUBLIC_URL
-    ? `${BACKEND_PUBLIC_URL.replace(/\/$/, '')}/api/payments/monobank/webhook`
-    : undefined;
+  // Формуємо URL вебхука:
+  // 1) якщо явно заданий MONOBANK_WEBHOOK_URL — беремо його,
+  // 2) інакше, якщо є BACKEND_PUBLIC_URL — додаємо до нього /api/payments/monobank/webhook
+  let webHookUrl =
+    process.env.MONOBANK_WEBHOOK_URL && process.env.MONOBANK_WEBHOOK_URL.trim()
+      ? process.env.MONOBANK_WEBHOOK_URL.trim()
+      : undefined;
+
+  if (!webHookUrl && process.env.BACKEND_PUBLIC_URL) {
+    webHookUrl = `${process
+      .env
+      .BACKEND_PUBLIC_URL.replace(/\/$/, '')}/api/payments/monobank/webhook`;
+  }
+
+  if (!webHookUrl) {
+    console.warn(
+      '[MONOBANK] Увага: webHookUrl не налаштований (немає MONOBANK_WEBHOOK_URL і BACKEND_PUBLIC_URL). ' +
+        'Webhook від Monobank може не працювати.'
+    );
+  }
 
   try {
+    // ❗ ВАЖЛИВО: redirectUrl та webHookUrl мають бути на верхньому рівні payload
     const payload = {
-      amount, // вже у копійках
+      amount, // у копійках
       ccy: 980,
       merchantPaymInfo: {
-        redirectUrl,
-        successUrl,
-        failUrl,
-        ...(webHookUrl ? { webHookUrl } : {}),
+        // reference – це наш orderId, щоб можна було звʼязати платіж
+        reference: orderIdStr,
+        destination: `Оплата замовлення №${orderIdStr} на BitZone`,
+        comment: `Оплата замовлення №${orderIdStr} на BitZone`,
       },
+      redirectUrl,
+      ...(webHookUrl ? { webHookUrl } : {}),
     };
+
+    console.log('[MONOBANK] Створюємо інвойс. Payload:', payload);
 
     const { data } = await monobankApi.post('invoice/create', payload);
 
@@ -136,7 +154,8 @@ const createMonobankInvoice = asyncHandler(async (req, res) => {
       );
       return res.status(502).json({
         ok: false,
-        message: 'Monobank повернув неочікувану відповідь при створенні інвойсу.',
+        message:
+          'Monobank повернув неочікувану відповідь при створенні інвойсу.',
       });
     }
 
@@ -191,6 +210,7 @@ const monobankWebhook = asyncHandler(async (req, res) => {
     const status = payload?.status;
     const amount = payload?.amount;
     const ccy = payload?.ccy;
+    const reference = payload?.reference; // якщо Monobank передає reference з merchantPaymInfo
 
     if (!invoiceId || !status) {
       console.warn(
@@ -218,15 +238,15 @@ const monobankWebhook = asyncHandler(async (req, res) => {
       );
       // створимо "мінімальний" запис, щоб далі його міг прочитати /status
       entry = {
-        orderId: null,
+        orderId: reference ? String(reference) : null,
         invoiceId,
-        amount: amount ?? null,
-        ccy: ccy ?? 980,
+        amount: typeof amount === 'number' ? amount : null,
+        ccy: typeof ccy === 'number' ? ccy : 980,
         status,
         roappPaymentCreated: false,
         lastUpdate: new Date(),
       };
-      entryKey = `invoice:${invoiceId}`;
+      entryKey = reference ? String(reference) : `invoice:${invoiceId}`;
       monobankInvoices.set(entryKey, entry);
     } else {
       entry.status = status;
@@ -235,6 +255,9 @@ const monobankWebhook = asyncHandler(async (req, res) => {
       }
       if (typeof ccy === 'number') {
         entry.ccy = ccy;
+      }
+      if (reference && !entry.orderId) {
+        entry.orderId = String(reference);
       }
       entry.lastUpdate = new Date();
 
