@@ -5,7 +5,7 @@ const sharp = require('sharp');
 const cron = require('node-cron');
 const Product = require('../models/productModel');
 const Category = require('../models/categoryModel');
-const User = require('../models/User'); // якщо в тебе інша назва файлу моделі — підкоригуй
+const User = require('../models/User');
 const { syncRoappCategories } = require('./roappCategoryService');
 
 // ===================== ROAPP API КЛІЄНТ =====================
@@ -57,87 +57,104 @@ const getWarehouseIdsFromEnv = () => {
  *   value: СУМА залишків по складах (Number)
  *
  * Використовує офіційний метод Get Stock:
- *   GET https://api.roapp.io/warehouse/goods/{warehouse_id} :contentReference[oaicite:2]{index=2}
+ *   GET /warehouse/goods/{warehouse_id}
+ *
+ * ❗ На відміну від попередньої версії:
+ *   - ми викликаємо його з параметром ids[] (batchами),
+ *   - тільки для тих productIds, які реально існують в Roapp.
  *
  * Якщо нічого не вийшло / помилка — повертає null,
  * щоб ми не обнуляли stock в БД.
  */
-const fetchRoappStockMap = async () => {
+const fetchRoappStockMap = async (productIds = []) => {
   const warehouseIds = getWarehouseIdsFromEnv();
 
   if (!warehouseIds.length) {
     return null;
   }
 
+  if (!productIds.length) {
+    console.warn(
+      '[ROAPP] fetchRoappStockMap викликано без productIds — пропускаємо оновлення stock.'
+    );
+    return null;
+  }
+
   const stockMap = {};
+  const chunkSize = 50; // скільки id відправляємо за раз у ids[]
 
   for (const wid of warehouseIds) {
     console.log(`🔄 [ROAPP] Get Stock для складу warehouse_id=${wid}...`);
 
-    try {
-      // За докою: GET /warehouse/goods/{warehouse_id}
-      // https://api.roapp.io/warehouse/goods/{warehouse_id}
-      const res = await roappApi.get(`/warehouse/goods/${wid}`, {
-        // про всяк випадок — не виключаємо нульові
-        params: {
-          exclude_zero_residue: false,
-        },
-      });
+    for (let i = 0; i < productIds.length; i += chunkSize) {
+      const chunk = productIds.slice(i, i + chunkSize);
 
-      const raw = res.data;
+      try {
+        // За докою: GET /warehouse/goods/{warehouse_id}
+        // з підтримкою ids[]
+        const res = await roappApi.get(`/warehouse/goods/${wid}`, {
+          params: {
+            ids: chunk, // axios зробить ids[]=1&ids[]=2 ...
+            exclude_zero_residue: false,
+          },
+        });
 
-      // У різних акаунтів структура може бути:
-      //   - масивом
-      //   - або об'єктом з .data / .results
-      const items = Array.isArray(raw)
-        ? raw
-        : Array.isArray(raw?.data)
-        ? raw.data
-        : Array.isArray(raw?.results)
-        ? raw.results
-        : [];
+        const raw = res.data;
 
-      console.log(
-        `   ✅ [ROAPP] Склад ${wid}: отримано ${items.length} записів залишків.`
-      );
+        // У різних акаунтів структура може бути:
+        //   - масивом
+        //   - або об'єктом з .data / .results
+        const items = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+          ? raw.data
+          : Array.isArray(raw?.results)
+          ? raw.results
+          : [];
 
-      for (const item of items) {
-        // Підбираємо можливі поля ID товару
-        const productId =
-          item.product_id ||
-          item.productId ||
-          (item.product && (item.product.id || item.product.pk)) ||
-          item.id;
-
-        if (!productId) continue;
-
-        // Підбираємо можливі поля кількості
-        const qtyRaw =
-          item.balance ??
-          item.qty ??
-          item.quantity ??
-          item.residue ??
-          item.stock ??
-          item.on_hand ??
-          item.onHand ??
-          0;
-
-        const qty = Number(qtyRaw) || 0;
-        const key = Number(productId);
-
-        if (!stockMap[key]) stockMap[key] = 0;
-        stockMap[key] += qty; // сумуємо по складах
-      }
-    } catch (error) {
-      console.error(
-        `❌ [ROAPP] Помилка Get Stock для складу warehouse_id=${wid}:`,
-        error.message
-      );
-      if (error.response?.data) {
-        console.error(
-          '[ROAPP] Відповідь API:',
-          JSON.stringify(error.response.data, null, 2)
+        console.log(
+          `   ✅ [ROAPP] Склад ${wid}: отримано ${items.length} записів залишків для batch'а з ${chunk.length} ids.`
         );
+
+        for (const item of items) {
+          // Підбираємо можливі поля ID товару
+          const productId =
+            item.product_id ||
+            item.productId ||
+            (item.product && (item.product.id || item.product.pk)) ||
+            item.id;
+
+          if (!productId) continue;
+
+          // Підбираємо можливі поля кількості
+          const qtyRaw =
+            item.balance ??
+            item.qty ??
+            item.quantity ??
+            item.residue ??
+            item.stock ??
+            item.on_hand ??
+            item.onHand ??
+            0;
+
+          const qty = Number(qtyRaw) || 0;
+          const key = Number(productId);
+
+          if (!stockMap[key]) stockMap[key] = 0;
+          stockMap[key] += qty; // сумуємо по складах
+        }
+      } catch (error) {
+        console.error(
+          `❌ [ROAPP] Помилка Get Stock для складу warehouse_id=${wid}, batch ${i /
+            chunkSize + 1}:`,
+          error.message
+        );
+        if (error.response?.data) {
+          console.error(
+            '[ROAPP] Відповідь API:',
+            JSON.stringify(error.response.data, null, 2)
+          );
+        }
       }
     }
   }
@@ -145,7 +162,7 @@ const fetchRoappStockMap = async () => {
   const keys = Object.keys(stockMap);
   if (!keys.length) {
     console.warn(
-      '⚠️ [ROAPP] Get Stock не повернув жодного запису по залишкам. ' +
+      '⚠️ [ROAPP] Get Stock через ids[] не повернув жодного запису по залишкам. ' +
         'Залишки в Mongo НЕ будуть змінені в цьому циклі.'
     );
     return null;
@@ -214,13 +231,8 @@ const syncProducts = async () => {
   let hasMore = true;
   const allProducts = [];
 
-  // 1) тягнемо сумарні залишки по всіх складах
-  const stockMap = await fetchRoappStockMap(); // { [productId]: totalQty } або null
-  const hasStockData = !!(stockMap && Object.keys(stockMap).length > 0);
-
   try {
-    // 2) тягнемо всі продукти по сторінках
-    //    GET https://api.roapp.io/products/ :contentReference[oaicite:3]{index=3}
+    // 1) тягнемо всі продукти по сторінках
     while (hasMore) {
       const response = await roappApi.get('products/', { params: { page } });
       const productsFromPage = response.data?.data || [];
@@ -237,7 +249,20 @@ const syncProducts = async () => {
 
     if (allProducts.length === 0) return;
 
-    // 3) bulk-операції для Mongo
+    // 2) збираємо всі Roapp product IDs
+    const productIds = allProducts.map((p) => p.id);
+
+    // 3) тягнемо сумарні залишки по ВСІХ складах для цих id
+    const stockMap = await fetchRoappStockMap(productIds); // { [productId]: totalQty } або null
+    const hasStockData = !!(stockMap && Object.keys(stockMap).length > 0);
+
+    if (!hasStockData) {
+      console.warn(
+        '⚠️ [ROAPP] stockMap порожній — поточний sync НЕ буде змінювати поля stock/isInStock.'
+      );
+    }
+
+    // 4) bulk-операції для Mongo
     const bulkOps = await Promise.all(
       allProducts.map(async (p) => {
         // Головне фото
@@ -290,7 +315,7 @@ const syncProducts = async () => {
           specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
 
-        // 4) оновлення stock ТІЛЬКИ якщо є коректні дані з Get Stock
+        // 5) оновлення stock ТІЛЬКИ якщо є коректні дані з Get Stock
         if (hasStockData) {
           const totalStockQty = Number(stockMap[p.id] ?? 0); // якщо немає в Map — 0
 
@@ -311,7 +336,7 @@ const syncProducts = async () => {
 
     const result = await Product.bulkWrite(bulkOps);
 
-    // 5) Видаляємо з локальної бази товари, яких більше немає в RoApp
+    // 6) Видаляємо з локальної бази товари, яких більше немає в RoApp
     const allRoappIds = allProducts.map((p) => p.id);
     if (allRoappIds.length > 0) {
       const deleteResult = await Product.deleteMany({
