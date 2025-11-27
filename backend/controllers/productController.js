@@ -108,26 +108,164 @@ const getProducts = asyncHandler(async (req, res) => {
     queryConditions.push({ price: priceFilter });
   }
 
-  // 2. Категорія (🔥 Враховуємо ВЕСЬ ПІДДЕРЕВО з RoappCategory)
-  if (categoryId) {
-    const idNum = Number(categoryId);
+  // ===== 2. Категорія + Тип + Платформи через RoappCategory =====
+  let allowedCategoryIds = null; // Set | null
+  const needCategoryFilters = categoryId || types || platforms;
 
-    const cats = await RoappCategory.find({
-      $or: [{ roappId: idNum }, { path: idNum }],
+  if (needCategoryFilters) {
+    // 2.0. Тягнемо всі активні продуктні категорії з Roapp
+    const roappCategories = await RoappCategory.find({
       type: 'product',
-    }).select('roappId');
+      isActive: true,
+    }).lean();
 
-    let ids = cats.map((c) => c.roappId);
-    if (!ids.includes(idNum)) ids.push(idNum);
+    const allCategoryIds = new Set(roappCategories.map((c) => c.roappId));
 
-    if (ids.length > 0) {
-      queryConditions.push({ roappCategoryId: { $in: ids } });
-    } else {
-      // fallback по назві, якщо щось піде не так
-      const category = await Category.findOne({ roappId: categoryId });
-      if (category) {
-        queryConditions.push({ category: new RegExp(`^${category.name}$`, 'i') });
+    const intersectSets = (current, next) => {
+      if (!next || next.size === 0) return new Set();
+      if (!current) return new Set(next);
+      const result = new Set();
+      current.forEach((id) => {
+        if (next.has(id)) result.add(id);
+      });
+      return result;
+    };
+
+    // Початково дозволяємо всі категорії
+    allowedCategoryIds = new Set(allCategoryIds);
+
+    // 2.1. Фільтр по конкретній категорії (враховуємо все піддерево)
+    if (categoryId) {
+      const idNum = Number(categoryId);
+      const subtreeIds = new Set();
+
+      roappCategories.forEach((cat) => {
+        const path = Array.isArray(cat.path) ? cat.path : [];
+        if (cat.roappId === idNum || path.includes(idNum)) {
+          subtreeIds.add(cat.roappId);
+        }
+      });
+
+      if (subtreeIds.size > 0) {
+        allowedCategoryIds = intersectSets(allowedCategoryIds, subtreeIds);
+      } else {
+        // fallback по назві, якщо щось пішло не так
+        const category = await Category.findOne({ roappId: categoryId });
+        if (category) {
+          queryConditions.push({ category: new RegExp(`^${category.name}$`, 'i') });
+        }
       }
+    }
+
+    // 2.2. Базові категорії для типів та платформ (по назвах)
+    const baseTypeIds = {
+      consoles: new Set(),
+      games: new Set(),
+      accs: new Set(),
+    };
+    const basePlatformIds = {
+      sony: new Set(),
+      xbox: new Set(),
+      nintendo: new Set(),
+      steamdeck: new Set(),
+    };
+
+    roappCategories.forEach((cat) => {
+      const name = (cat.name || '').toLowerCase();
+
+      // Типи
+      Object.entries(TYPE_KEYS).forEach(([typeKey, keys]) => {
+        if (keys.some((k) => name.includes(k))) {
+          baseTypeIds[typeKey].add(cat.roappId);
+        }
+      });
+
+      // Платформи
+      Object.entries(PLATFORM_KEYS).forEach(([platKey, keys]) => {
+        if (keys.some((k) => name.includes(k))) {
+          basePlatformIds[platKey].add(cat.roappId);
+        }
+      });
+    });
+
+    // 2.3. Розширюємо базові типи/платформи на всі підкатегорії через path
+    const typeBuckets = {
+      consoles: new Set(),
+      games: new Set(),
+      accs: new Set(),
+    };
+    const platformBuckets = {
+      sony: new Set(),
+      xbox: new Set(),
+      nintendo: new Set(),
+      steamdeck: new Set(),
+    };
+
+    roappCategories.forEach((cat) => {
+      const pathIds = [...(Array.isArray(cat.path) ? cat.path : []), cat.roappId];
+
+      // Типи
+      Object.keys(TYPE_KEYS).forEach((typeKey) => {
+        const baseSet = baseTypeIds[typeKey];
+        if (baseSet.size && pathIds.some((id) => baseSet.has(id))) {
+          typeBuckets[typeKey].add(cat.roappId);
+        }
+      });
+
+      // Платформи
+      Object.keys(PLATFORM_KEYS).forEach((platKey) => {
+        const baseSet = basePlatformIds[platKey];
+        if (baseSet.size && pathIds.some((id) => baseSet.has(id))) {
+          platformBuckets[platKey].add(cat.roappId);
+        }
+      });
+    });
+
+    // 2.4. Фільтр по Типу (consoles/games/accs)
+    if (types) {
+      const selectedTypes = types
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      const typeIdsUnion = new Set();
+      selectedTypes.forEach((t) => {
+        const bucket = typeBuckets[t];
+        if (bucket) bucket.forEach((id) => typeIdsUnion.add(id));
+      });
+
+      if (typeIdsUnion.size === 0) {
+        return res.json({ products: [], total: 0 });
+      }
+
+      allowedCategoryIds = intersectSets(allowedCategoryIds, typeIdsUnion);
+    }
+
+    // 2.5. Фільтр по Платформі (sony/xbox/nintendo/steamdeck)
+    if (platforms) {
+      const selectedPlatforms = platforms
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      const platformIdsUnion = new Set();
+      selectedPlatforms.forEach((p) => {
+        const bucket = platformBuckets[p];
+        if (bucket) bucket.forEach((id) => platformIdsUnion.add(id));
+      });
+
+      if (platformIdsUnion.size === 0) {
+        return res.json({ products: [], total: 0 });
+      }
+
+      allowedCategoryIds = intersectSets(allowedCategoryIds, platformIdsUnion);
+    }
+
+    // 2.6. Фінальний фільтр по roappCategoryId
+    if (allowedCategoryIds && allowedCategoryIds.size > 0) {
+      queryConditions.push({ roappCategoryId: { $in: Array.from(allowedCategoryIds) } });
+    } else if (allowedCategoryIds && allowedCategoryIds.size === 0) {
+      return res.json({ products: [], total: 0 });
     }
   }
 
@@ -136,68 +274,19 @@ const getProducts = asyncHandler(async (req, res) => {
     queryConditions.push({ $text: { $search: search } });
   }
 
-  // 4. Платформи
-  if (platforms) {
-    const selectedPlatforms = platforms.split(',');
-    const platformIncludeKeywords = selectedPlatforms.flatMap(
-      (p) => PLATFORM_KEYS[p] || []
-    );
-    const platformIncludeRegex = buildRegex(platformIncludeKeywords);
-    queryConditions.push({
-      $or: [{ name: platformIncludeRegex }, { category: platformIncludeRegex }],
-    });
-
-    const allPlatformKeys = Object.keys(PLATFORM_KEYS);
-    const platformsToExclude = allPlatformKeys.filter(
-      (p) => !selectedPlatforms.includes(p)
-    );
-    if (platformsToExclude.length > 0) {
-      const platformExcludeKeywords = platformsToExclude.flatMap(
-        (p) => PLATFORM_KEYS[p] || []
-      );
-      const platformExcludeRegex = buildRegex(platformExcludeKeywords);
-      queryConditions.push({ name: { $not: platformExcludeRegex } });
-    }
-  }
-
-  // 5. Тип (ігри / консолі / аксесуари)
-  if (types) {
-    const selectedTypes = types.split(',');
-    const typeRegex = buildRegex(selectedTypes.flatMap((type) => TYPE_KEYS[type] || []));
-
-    queryConditions.push({
-      $or: [{ name: typeRegex }, { category: typeRegex }],
-    });
-
-    if (selectedTypes.includes('consoles') && !selectedTypes.includes('games')) {
-      queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.games) } });
-    }
-    if (selectedTypes.includes('consoles') && !selectedTypes.includes('accs')) {
-      queryConditions.push({ name: { $not: buildRegex(TYPE_KEYS.accs) } });
-    }
-    if (selectedTypes.includes('games') && !selectedTypes.includes('consoles')) {
-      queryConditions.push({
-        name: { $not: buildRegex(['консол', 'приставк', 'console']) },
-      });
-    }
-  }
-
   const match = queryConditions.length > 0 ? { $and: queryConditions } : {};
 
   // 🔢 Загальна кількість (для пагінації)
   const total = await Product.countDocuments(match);
 
   // ---------- Сортування ----------
-  // Головна ідея:
-  //  1) Спершу сортуємо по isOutOfStock (0 -> є в наявності, 1 -> немає)
-  //  2) Потім по score (якщо search)
-  //  3) Або по price/name/createdAtRoapp – залежно від sort
+  //  1) Спершу isOutOfStock (0 -> є, 1 -> немає)
+  //  2) Якщо search — textScore, інакше price/name/createdAtRoapp
   const sortStage = {
-    isOutOfStock: 1, // головний ключ: завжди спочатку в наявності
+    isOutOfStock: 1,
   };
 
   if (search) {
-    // При пошуку – перше сортування за textScore, але тільки всередині груп in-stock/out-of-stock
     sortStage.score = { $meta: 'textScore' };
   } else {
     switch (sort) {
@@ -241,20 +330,17 @@ const getProducts = asyncHandler(async (req, res) => {
         },
       },
     },
+    { $sort: sortStage },
+    { $skip: skip },
+    { $limit: limit },
   ];
-
-  // При пошуку Mongo сам знає про textScore по $text у $match,
-  // але ми можемо сортувати по score з $meta у $sort (без окремого поля).
-  pipeline.push({ $sort: sortStage });
-  pipeline.push({ $skip: skip });
-  pipeline.push({ $limit: limit });
 
   const products = await Product.aggregate(pipeline);
 
   res.json({
     products: products.map((p) => ({
       ...p,
-      _id: p.roappId,
+      _id: p.roappId, // як і раніше — фронт заточений під це
     })),
     total,
   });
