@@ -19,35 +19,30 @@ const roappApi = axios.create({
 /* ===================== СИНХ КОРИСТУВАЧІВ (як було) ===================== */
 
 const syncUserToRoapp = async (user) => {
-  console.log(`🔄 Починаємо синхронізацію нового користувача ${user.email} з Roapp...`);
+  console.log(`🔄 Починаємо синхронізацію нового користувача до RoApp: ${user.email}`);
+
   try {
-    const personData = {
-      name: user.name,
-      emails: [user.email],
+    const payload = {
+      name: user.name || 'Клієнт BitZone',
+      phone: user.phone || '',
+      email: user.email,
     };
 
-    const response = await roappApi.post('people/', personData);
-    const roappUser = response.data.data;
+    const response = await roappApi.post('clients/', payload);
 
-    if (!roappUser || !roappUser.id) {
-      throw new Error('Roapp API не повернуло ID користувача.');
-    }
-
-    console.log(
-      `✅ Користувач ${user.email} успішно синхронізований з Roapp ID: ${roappUser.id}`
-    );
-
-    await User.findByIdAndUpdate(user._id, { roappId: roappUser.id });
-    console.log(
-      `✅ ID ${roappUser.id} збережено для користувача ${user.email} в локальній базі.`
-    );
-  } catch (error) {
-    console.error(`❌ Помилка синхронізації користувача ${user.email} з Roapp.`);
-    if (error.response && error.response.data) {
-      console.error('Roapp API Error:', error.response.data);
+    if (response.data && response.data.id) {
+      const roappClientId = response.data.id;
+      user.roappClientId = roappClientId;
+      await user.save();
+      console.log(`✅ Користувача синхронізовано до RoApp. roappClientId = ${roappClientId}`);
     } else {
-      console.error('Unknown sync error:', error.message);
+      console.warn(
+        '⚠️ Відповідь RoApp при створенні клієнта не містить ID. response.data =',
+        response.data
+      );
     }
+  } catch (err) {
+    console.error('❌ Помилка при синхронізації користувача до RoApp:', err.message);
   }
 };
 
@@ -129,7 +124,7 @@ const syncProducts = async () => {
           name: p.title,
           price: firstPrice,
           category: p.category ? p.category.title : 'Різне',
-          roappCategoryId, // 🔥 НОВЕ поле
+          roappCategoryId, // 🔥 поле для звʼязку з RoappCategory
           description: p.description || '',
           image: imageUrl,
           images:
@@ -144,9 +139,7 @@ const syncProducts = async () => {
               : 1,
           createdAtRoapp: p.created_at ? new Date(p.created_at) : undefined,
           lqip,
-          specs: p.custom_fields
-            ? Object.values(p.custom_fields).filter(Boolean)
-            : [],
+          specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
 
         return {
@@ -160,6 +153,20 @@ const syncProducts = async () => {
     );
 
     const result = await Product.bulkWrite(bulkOps);
+
+    // 🔥 Видаляємо з локальної бази ті товари, яких більше немає в ROAPP
+    const allRoappIds = allProducts.map((p) => p.id);
+    if (allRoappIds.length > 0) {
+      const deleteResult = await Product.deleteMany({
+        roappId: { $nin: allRoappIds },
+      });
+      console.log(
+        `   - Видалено локальних товарів, відсутніх у ROAPP: ${
+          deleteResult.deletedCount || 0
+        }`
+      );
+    }
+
     console.log('✅ [ROAPP] Синхронізацію товарів завершено!');
     console.log(`   - Створено нових: ${result.upsertedCount || 0}`);
     console.log(`   - Оновлено існуючих: ${result.modifiedCount || 0}`);

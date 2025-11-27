@@ -45,26 +45,18 @@ async function syncRoappCategories(options = {}) {
     const bulkOps = [];
 
     for (const { raw, type } of all) {
-      const roappId = raw.id ?? raw.pk ?? raw.roapp_id;
-      const name = raw.name ?? raw.title ?? raw.label;
-      const parentId =
-        raw.parent_id ??
-        raw.parentId ??
-        raw.parent?.id ??
-        raw.parent?.pk ??
-        null;
+      const roappId = Number(raw.id);
+      if (!Number.isFinite(roappId)) continue;
 
-      if (!roappId || !name) {
-        console.warn('[ROAPP] Категорія без id або name, пропускаю:', raw);
-        continue;
-      }
+      const name = raw.title || raw.name || 'Без назви';
+      const parentId = raw.parent_id ? Number(raw.parent_id) : null;
 
       const slug =
-        (raw.slug ||
-          String(name)
-            .toLowerCase()
-            .replace(/[^a-z0-9а-яіїєґ]+/gi, '-')
-            .replace(/^-+|-+$/g, '')) +
+        (name || 'category')
+          .toString()
+          .toLowerCase()
+          .replace(/[^a-z0-9а-яіїєґ]+/gi, '-')
+          .replace(/^-+|-+$/g, '') +
         '-' +
         roappId;
 
@@ -92,7 +84,25 @@ async function syncRoappCategories(options = {}) {
     }
 
     await RoappCategory.bulkWrite(bulkOps);
-    console.log(`✅ [ROAPP] Синхронізація категорій завершена. Оновлено/створено: ${bulkOps.length}`);
+    console.log(
+      `✅ [ROAPP] Синхронізація категорій завершена. Оновлено/створено: ${bulkOps.length}`
+    );
+
+    // 🔥 Видаляємо з локальної бази ті категорії, яких більше немає в ROAPP
+    const remoteCategoryIds = all
+      .map(({ raw }) => Number(raw.id))
+      .filter((id) => Number.isFinite(id));
+
+    if (remoteCategoryIds.length > 0) {
+      const deleteCategoriesResult = await RoappCategory.deleteMany({
+        roappId: { $nin: remoteCategoryIds },
+      });
+      console.log(
+        `   - Видалено локальних категорій, відсутніх у ROAPP: ${
+          deleteCategoriesResult.deletedCount || 0
+        }`
+      );
+    }
 
     // 2-й прохід: рахуємо path (шлях предків)
     const categories = await RoappCategory.find().lean();
@@ -148,6 +158,19 @@ async function syncRoappCategories(options = {}) {
       console.log(
         `✅ [Mongo] Оновлено/створено простих категорій для фронтенду: ${catBulk.length}`
       );
+
+      // 🔥 Чистимо плоску таблицю Category від категорій, яких більше немає в ROAPP
+      const rootCategoryIds = rootProductCategories.map((c) => c.roappId);
+      if (rootCategoryIds.length > 0) {
+        const deleteFlatCategoriesResult = await Category.deleteMany({
+          roappId: { $nin: rootCategoryIds },
+        });
+        console.log(
+          `   - Видалено простих категорій для фронтенду, відсутніх у ROAPP: ${
+            deleteFlatCategoriesResult.deletedCount || 0
+          }`
+        );
+      }
     }
   } catch (err) {
     console.error('❌ [ROAPP] Помилка при синхронізації категорій:', err.message);
