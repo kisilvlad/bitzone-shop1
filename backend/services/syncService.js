@@ -5,7 +5,7 @@ const sharp = require('sharp');
 const cron = require('node-cron');
 const Product = require('../models/productModel');
 const Category = require('../models/categoryModel');
-const User = require('../models/User');
+const User = require('../models/User'); // якщо в тебе інша назва файлу моделі — підкоригуй
 const { syncRoappCategories } = require('./roappCategoryService');
 
 // ===================== ROAPP API КЛІЄНТ =====================
@@ -18,61 +18,77 @@ const roappApi = axios.create({
   },
 });
 
-// ===================== ДОПОМОЖНІ =====================
+// ===================== ДОПОМОЖНІ ФУНКЦІЇ =====================
 
 /**
- * Повертає масив ID складів, з яких потрібно брати залишки.
- *   ROAPP_WAREHOUSE_IDS=1,2,3
- *   або fallback на ROAPP_WAREHOUSE_ID
+ * Отримати список ID складів з .env
+ *
+ * ROAPP_WAREHOUSE_IDS=123,456
+ * або fallback:
+ * ROAPP_WAREHOUSE_ID=123
  */
 const getWarehouseIdsFromEnv = () => {
   const multiple = process.env.ROAPP_WAREHOUSE_IDS;
   if (multiple) {
-    return multiple
+    const arr = multiple
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+
+    if (arr.length) {
+      return arr;
+    }
   }
 
   const single = process.env.ROAPP_WAREHOUSE_ID;
-  if (single) return [single];
+  if (single) {
+    return [single.trim()];
+  }
 
   console.warn(
-    '⚠️ Не вказано ROAPP_WAREHOUSE_IDS або ROAPP_WAREHOUSE_ID — залишки зі складів не будуть синхронізовані.'
+    '⚠️ ROAPP_WAREHOUSE_IDS/ROAPP_WAREHOUSE_ID не задані — залишки зі складів не будуть синхронізовані.'
   );
   return [];
 };
 
 /**
- * Отримати карту залишків по ВСІХ складах:
- *  key: product_id (Number)
- *  value: сумарна кількість (Number)
+ * Отримати карту залишків з RoApp по ВСІХ складах:
+ *   key: product_id (Number)
+ *   value: СУМА залишків по складах (Number)
  *
- * Використовує офіційний ендпоінт:
- *   GET https://api.roapp.io/warehouse/goods/{warehouse_id}
- * (Get Stock у розділі Inventory) :contentReference[oaicite:1]{index=1}
+ * Використовує офіційний метод Get Stock:
+ *   GET https://api.roapp.io/warehouse/goods/{warehouse_id} :contentReference[oaicite:2]{index=2}
+ *
+ * Якщо нічого не вийшло / помилка — повертає null,
+ * щоб ми не обнуляли stock в БД.
  */
 const fetchRoappStockMap = async () => {
   const warehouseIds = getWarehouseIdsFromEnv();
 
   if (!warehouseIds.length) {
-    return {};
+    return null;
   }
 
   const stockMap = {};
 
   for (const wid of warehouseIds) {
-    console.log(`🔄 [ROAPP] Завантажую залишки зі складу warehouse_id=${wid}...`);
+    console.log(`🔄 [ROAPP] Get Stock для складу warehouse_id=${wid}...`);
 
     try {
-      const res = await roappApi.get(`/warehouse/goods/${wid}`);
+      // За докою: GET /warehouse/goods/{warehouse_id}
+      // https://api.roapp.io/warehouse/goods/{warehouse_id}
+      const res = await roappApi.get(`/warehouse/goods/${wid}`, {
+        // про всяк випадок — не виключаємо нульові
+        params: {
+          exclude_zero_residue: false,
+        },
+      });
 
-      // У документації Get Stock сказано, що ендпоінт повертає
-      // "list of products and their stock balances for a given warehouse".
-      // Формат може бути:
-      //  - масив
-      //  - або об'єкт із полем data / results
       const raw = res.data;
+
+      // У різних акаунтів структура може бути:
+      //   - масивом
+      //   - або об'єктом з .data / .results
       const items = Array.isArray(raw)
         ? raw
         : Array.isArray(raw?.data)
@@ -82,11 +98,11 @@ const fetchRoappStockMap = async () => {
         : [];
 
       console.log(
-        `   ✅ [ROAPP] Склад ${wid}: отримано ${items.length} позицій залишків.`
+        `   ✅ [ROAPP] Склад ${wid}: отримано ${items.length} записів залишків.`
       );
 
       for (const item of items) {
-        // Product ID: підстраховуємося по різних ключах
+        // Підбираємо можливі поля ID товару
         const productId =
           item.product_id ||
           item.productId ||
@@ -95,11 +111,12 @@ const fetchRoappStockMap = async () => {
 
         if (!productId) continue;
 
-        // Кількість на складі: також підстраховуємося
+        // Підбираємо можливі поля кількості
         const qtyRaw =
           item.balance ??
           item.qty ??
           item.quantity ??
+          item.residue ??
           item.stock ??
           item.on_hand ??
           item.onHand ??
@@ -109,11 +126,11 @@ const fetchRoappStockMap = async () => {
         const key = Number(productId);
 
         if (!stockMap[key]) stockMap[key] = 0;
-        stockMap[key] += qty; // 🔥 сумуємо по складах
+        stockMap[key] += qty; // сумуємо по складах
       }
     } catch (error) {
       console.error(
-        `❌ [ROAPP] Не вдалося отримати залишки зі складу warehouse_id=${wid}:`,
+        `❌ [ROAPP] Помилка Get Stock для складу warehouse_id=${wid}:`,
         error.message
       );
       if (error.response?.data) {
@@ -125,8 +142,17 @@ const fetchRoappStockMap = async () => {
     }
   }
 
+  const keys = Object.keys(stockMap);
+  if (!keys.length) {
+    console.warn(
+      '⚠️ [ROAPP] Get Stock не повернув жодного запису по залишкам. ' +
+        'Залишки в Mongo НЕ будуть змінені в цьому циклі.'
+    );
+    return null;
+  }
+
   console.log(
-    `✅ [ROAPP] Сумарна карта залишків по складах: ${Object.keys(stockMap).length} товарів.`
+    `✅ [ROAPP] Побудовано карту залишків по складах на ${keys.length} товарів.`
   );
 
   return stockMap;
@@ -135,7 +161,7 @@ const fetchRoappStockMap = async () => {
 // ===================== СИНХ ЮЗЕРІВ =====================
 
 const syncUserToRoapp = async (user) => {
-  console.log(`🔄 Починаємо синхронізацію нового користувача до RoApp: ${user.email}`);
+  console.log(`🔄 Синхронізація користувача до RoApp: ${user.email}`);
 
   try {
     const payload = {
@@ -173,7 +199,7 @@ const syncCategories = async () => {
   console.log('🔄 [SYNC] Запуск syncCategories()...');
   try {
     await syncRoappCategories({ includeServiceCategories: false });
-    console.log('✅ [SYNC] Категорії успішно синхронізовано (RoappCategory + Category).');
+    console.log('✅ [SYNC] Категорії синхронізовано (RoappCategory + Category).');
   } catch (err) {
     console.error('❌ [SYNC] Помилка під час синхронізації категорій:', err.message);
   }
@@ -188,11 +214,13 @@ const syncProducts = async () => {
   let hasMore = true;
   const allProducts = [];
 
-  // 1) Спочатку тягнемо сумарні залишки по всіх складах
-  const stockMap = await fetchRoappStockMap(); // { [productId]: totalQty }
+  // 1) тягнемо сумарні залишки по всіх складах
+  const stockMap = await fetchRoappStockMap(); // { [productId]: totalQty } або null
+  const hasStockData = !!(stockMap && Object.keys(stockMap).length > 0);
 
   try {
-    // 2) Тягнемо всі продукти по сторінках
+    // 2) тягнемо всі продукти по сторінках
+    //    GET https://api.roapp.io/products/ :contentReference[oaicite:3]{index=3}
     while (hasMore) {
       const response = await roappApi.get('products/', { params: { page } });
       const productsFromPage = response.data?.data || [];
@@ -205,11 +233,11 @@ const syncProducts = async () => {
       }
     }
 
-    console.log(`✅ [ROAPP] Отримано ${allProducts.length} товарів з ROAPP.`);
+    console.log(`✅ [ROAPP] Отримано ${allProducts.length} товарів з RoApp.`);
 
     if (allProducts.length === 0) return;
 
-    // 3) Формуємо bulk-операції
+    // 3) bulk-операції для Mongo
     const bulkOps = await Promise.all(
       allProducts.map(async (p) => {
         // Головне фото
@@ -238,16 +266,13 @@ const syncProducts = async () => {
         const roappCategoryId =
           p.category?.id ?? p.category?.pk ?? p.category?.roapp_id ?? null;
 
-        // Ціна — беремо першу позитивну із p.prices
+        // Ціна — беремо першу позитивну із p.prices (як і раніше)
         const firstPrice =
           p.prices && typeof p.prices === 'object'
             ? Object.values(p.prices).find((price) => price > 0) || 0
             : 0;
 
-        // 🔥 Сумарний залишок по всіх складах.
-        // Якщо продукт не зустрічається в stockMap — вважаємо, що 0.
-        const totalStockQty = Number(stockMap[p.id] ?? 0);
-
+        // Базові дані товару
         const productData = {
           roappId: p.id,
           name: p.title,
@@ -260,13 +285,19 @@ const syncProducts = async () => {
             Array.isArray(p.images) && p.images.length > 0
               ? p.images.map((img) => img.image)
               : [],
-          stock: totalStockQty,      // 🔑 використовуємо це поле у сортуванні
-          roappStockQty: totalStockQty,
-          isInStock: totalStockQty > 0,
           createdAtRoapp: p.created_at ? new Date(p.created_at) : undefined,
           lqip,
           specs: p.custom_fields ? Object.values(p.custom_fields).filter(Boolean) : [],
         };
+
+        // 4) оновлення stock ТІЛЬКИ якщо є коректні дані з Get Stock
+        if (hasStockData) {
+          const totalStockQty = Number(stockMap[p.id] ?? 0); // якщо немає в Map — 0
+
+          productData.stock = totalStockQty;
+          productData.roappStockQty = totalStockQty;
+          productData.isInStock = totalStockQty > 0;
+        }
 
         return {
           updateOne: {
@@ -280,14 +311,14 @@ const syncProducts = async () => {
 
     const result = await Product.bulkWrite(bulkOps);
 
-    // 🔥 Видаляємо з локальної бази ті товари, яких більше немає в ROAPP
+    // 5) Видаляємо з локальної бази товари, яких більше немає в RoApp
     const allRoappIds = allProducts.map((p) => p.id);
     if (allRoappIds.length > 0) {
       const deleteResult = await Product.deleteMany({
         roappId: { $nin: allRoappIds },
       });
       console.log(
-        `   - Видалено локальних товарів, відсутніх у ROAPP: ${
+        `   - Видалено локальних товарів, відсутніх у RoApp: ${
           deleteResult.deletedCount || 0
         }`
       );
@@ -315,9 +346,9 @@ const runSync = async () => {
 // Запуск при старті сервера
 runSync();
 
-// Крон (кожні 15 хв)
+// Крон (кожні 15 хвилин)
 cron.schedule('*/15 * * * *', () => {
-  console.log('⏰ Запуск планової синхронізації...');
+  console.log('⏰ Запуск планової синхронізації (cron)...');
   runSync();
 });
 
